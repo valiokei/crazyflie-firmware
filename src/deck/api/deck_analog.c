@@ -28,8 +28,8 @@
 
 #include "stm32fxxx.h"
 
-static  uint32_t  stregResolution;
-static  uint32_t  adcRange;
+static uint32_t stregResolution;
+static uint32_t adcRange;
 
 void adcInit(void)
 {
@@ -41,7 +41,7 @@ void adcInit(void)
   ADC_DeInit();
 
   /* Define ADC init structures */
-  ADC_InitTypeDef       ADC_InitStructure;
+  ADC_InitTypeDef ADC_InitStructure;
   ADC_CommonInitTypeDef ADC_CommonInitStructure;
 
   /* Populates structures with reset values */
@@ -74,7 +74,8 @@ static uint16_t analogReadChannel(uint8_t channel)
   ADC_SoftwareStartConv(ADC2);
 
   /* Wait until conversion completion */
-  while(ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == RESET);
+  while (ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == RESET)
+    ;
 
   /* Get the conversion value */
   return ADC_GetConversionValue(ADC2);
@@ -94,10 +95,10 @@ uint16_t analogRead(const deckPin_t pin)
   GPIO_StructInit(&GPIO_InitStructure);
 
   /* Initialise the GPIO pin to analog mode. */
-  GPIO_InitStructure.GPIO_Pin   = deckGPIOMapping[pin.id].pin;
-  GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_AN;
+  GPIO_InitStructure.GPIO_Pin = deckGPIOMapping[pin.id].pin;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AN;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz;
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_NOPULL;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
 
   /* TODO: Any settling time before we can do ADC after init on the GPIO pin? */
   GPIO_Init(deckGPIOMapping[pin.id].port, &GPIO_InitStructure);
@@ -117,18 +118,28 @@ void analogReference(uint8_t type)
 
 void analogReadResolution(uint8_t bits)
 {
-  ADC_InitTypeDef       ADC_InitStructure;
+  ADC_InitTypeDef ADC_InitStructure;
 
   assert_param((bits >= 6) && (bits <= 12));
 
   adcRange = 1 << bits;
   switch (bits)
   {
-    case 12: stregResolution = ADC_Resolution_12b; break;
-    case 10: stregResolution = ADC_Resolution_10b; break;
-    case 8:  stregResolution = ADC_Resolution_8b; break;
-    case 6:  stregResolution = ADC_Resolution_6b; break;
-    default: stregResolution = ADC_Resolution_12b; break;
+  case 12:
+    stregResolution = ADC_Resolution_12b;
+    break;
+  case 10:
+    stregResolution = ADC_Resolution_10b;
+    break;
+  case 8:
+    stregResolution = ADC_Resolution_8b;
+    break;
+  case 6:
+    stregResolution = ADC_Resolution_6b;
+    break;
+  default:
+    stregResolution = ADC_Resolution_12b;
+    break;
   }
 
   /* Init ADC2 witch new resolution */
@@ -149,4 +160,132 @@ float analogReadVoltage(const deckPin_t pin)
   voltage = analogRead(pin) * VREF / adcRange;
 
   return voltage;
+}
+
+// DMA ADC SECTION
+// inspired by https://community.st.com/t5/stm32-mcus-products/stm32f4-discovery-adc-dma-double-buffer/td-p/422343
+// and https://forum.bitcraze.io/viewtopic.php?t=2598&start=10
+
+#define ADC1_DR ((uint32_t)0x4001244C) #arraySize 20000 __IO uint16_t RawADC[arraySize];
+#define DMA_Str DMA2_Stream4
+
+void GPIO_init(const deckPin_t pin)
+{
+  assert_param(deckGPIOMapping[pin.id].adcCh > -1);
+  RCC_AHB1PeriphClockCmd(deckGPIOMapping[pin.id].periph, ENABLE);
+
+  /* Populate structure with RESET values. */
+  GPIO_InitTypeDef GPIO_InitStructure;
+  GPIO_StructInit(&GPIO_InitStructure);
+  /* Initialise the GPIO pin to analog mode. */
+  GPIO_InitStructure.GPIO_Pin = deckGPIOMapping[pin.id].pin;
+  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AN;
+  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz; // non so se è necessario
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+  GPIO_Init(deckGPIOMapping[pin.id].port, &GPIO_InitStructure);
+}
+
+void ADC_init_DMA_mode(const deckPin_t pin)
+{
+  // Penso che questo debba essere fatto dopo l'init del dma
+
+  // Check the ADC number to be initialized
+  // should be ADC1
+
+  /* Note that this de-initializes registers for all ADCs (ADCx) */
+  ADC_DeInit();
+
+  /* Define ADC init structures */
+  ADC_InitTypeDef ADC_InitStructure;
+  ADC_CommonInitTypeDef ADC_CommonInitStructure;
+
+  /* Populates structures with reset values */
+  ADC_StructInit(&ADC_InitStructure);
+  ADC_CommonStructInit(&ADC_CommonInitStructure);
+
+  /* enable ADC clock */
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+
+  /* enable ADC in indipendent mode for a initial init*/
+  // TODO: check the prescaler for the speed
+  ADC_CommonInitStructure.ADC_Mode = ADC_Mode_Independent;
+  ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div2; /* HCLK = 168MHz, PCLK2 = 84MHz, ADCCLK = 42MHz (when using ADC_Prescaler_Div2) */
+  ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
+  ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
+  ADC_CommonInit(&ADC_CommonInitStructure);
+
+  /* init DMA mode ADC setting*/
+  // TODO: check the paramenters values
+  ADC_InitStructure.ADC_ContinuousConvMode = ENABLE;
+  ADC_InitStructure.ADC_Resolution = ADC_Resolution_12b;
+  ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
+  ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None; // TODO: controlla questo parametro
+  ADC_InitStructure.ADC_NbrOfConversion = 1;
+  ADC_InitStructure.ADC_ScanConvMode = DISABLE;
+  ADC_Init(ADC1, &ADC_InitStructure);
+}
+
+void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_t ADC_SampleTime)
+{
+
+  /* According to datasheet, minimum sampling time for 12-bit conversion is 15 cycles. */
+  // TODO: check the correct sampling time to insert
+  //    questo preso da sito stm esempio ispirazione
+  // ADC_RegularChannelConfig(ADC1, ADC_Channel_7, 1, ADC_SampleTime_480Cycles);
+  //    questo preso da funzione analogReadChannel()
+  // ADC_RegularChannelConfig(ADC2, channel, 1, ADC_SampleTime_15Cycles);
+  ADC_RegularChannelConfig(ADC_n, ADC_Channel, Rank, ADC_SampleTime);
+
+  /*enabling the generation of DMA requests continuously at the end
+           of the last DMA transfer*/
+  ADC_DMARequestAfterLastTransferCmd(ADC_n, ENABLE);
+
+  /*enabling the DMA mode for regular channels group*/
+  ADC_DMACmd(ADC_n, ENABLE);
+
+  // Enable ADC DMA
+  ADC_Cmd(ADC_n, ENABLE);
+  // Start ADC Conversion
+  ADC_SoftwareStartConv(ADC_n);
+}
+
+void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
+{
+  DMA_ITConfig(DMA_Stream, DMA_IT_TC, ENABLE);
+
+  // Enable DMA1 channel IRQ Channel
+  NVIC_InitTypeDef NVIC_InitStructure;
+  NVIC_InitStructure.NVIC_IRQChannel = DMA_IRQ;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  NVIC_Init(&NVIC_InitStructure);
+}
+
+void DMA_inititalization(DMA_Stream_TypeDef *DMA_Stream, uint32_t *RawADC, ADC_TypeDef *ADC_n, uint32_t ADC_Channel, IRQn_Type DMA_IRQ, uint16_t BufferSize)
+{
+
+  DMA_InitTypeDef DMA_InitStructure;
+  DMA_StructInit(&DMA_InitStructure);
+
+  //==Configure DMA2 - Stream 4
+  DMA_DeInit(DMA_Stream); // Set DMA registers to default values
+  DMA_InitStructure.DMA_Channel = ADC_Channel;
+  DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC_n->DR; // Source address
+  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)RawADC;        // Destination address
+  DMA_InitStructure.DMA_BufferSize = BufferSize;                   // Set the buffer size
+
+  DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
+  DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
+  DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord; // source size - 16bit
+  DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;         // destination size = 16b
+  DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
+  DMA_InitStructure.DMA_Priority = DMA_Priority_High;
+  DMA_InitStructure.DMA_FIFOMode = DMA_FIFOMode_Disable;
+  DMA_InitStructure.DMA_FIFOThreshold = DMA_FIFOThreshold_HalfFull;
+  DMA_InitStructure.DMA_MemoryBurst = DMA_MemoryBurst_Single;
+  DMA_InitStructure.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
+  DMA_Init(DMA_Stream, &DMA_InitStructure); // Initialize the DMA
+
+  DMA_IRQ_enable(DMA_Stream, DMA_IRQ);
 }
