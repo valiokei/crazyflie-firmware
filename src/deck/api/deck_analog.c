@@ -25,11 +25,18 @@
  */
 
 #include "deck.h"
-
+#include "debug.h"
 #include "stm32fxxx.h"
+#include "stm32f4xx_dma.h"
+#include "stm32f4xx_misc.h"
+#include "stm32f4xx_adc.h"
+#include "stm32f4xx_rcc.h"
+#include "stm32f4xx_gpio.h"
 
 static uint32_t stregResolution;
 static uint32_t adcRange;
+
+volatile uint8_t test = 0;
 
 void adcInit(void)
 {
@@ -166,8 +173,8 @@ float analogReadVoltage(const deckPin_t pin)
 // inspired by https://community.st.com/t5/stm32-mcus-products/stm32f4-discovery-adc-dma-double-buffer/td-p/422343
 // and https://forum.bitcraze.io/viewtopic.php?t=2598&start=10
 
-#define ADC1_DR ((uint32_t)0x4001244C) #arraySize 20000 __IO uint16_t RawADC[arraySize];
-#define DMA_Str DMA2_Stream4
+// #define ADC1_DR ((uint32_t)0x4001244C) #arraySize 20000 __IO uint16_t DMA_Buffer[arraySize];
+// #define DMA_Str DMA2_Stream4
 
 void GPIO_init(const deckPin_t pin)
 {
@@ -185,7 +192,7 @@ void GPIO_init(const deckPin_t pin)
   GPIO_Init(deckGPIOMapping[pin.id].port, &GPIO_InitStructure);
 }
 
-void ADC_init_DMA_mode(const deckPin_t pin)
+void ADC_init_DMA_mode(uint32_t RCC_APB2Periph_ADCx, ADC_TypeDef *ADCx)
 {
   // Penso che questo debba essere fatto dopo l'init del dma
 
@@ -204,7 +211,7 @@ void ADC_init_DMA_mode(const deckPin_t pin)
   ADC_CommonStructInit(&ADC_CommonInitStructure);
 
   /* enable ADC clock */
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADCx, ENABLE);
 
   /* enable ADC in indipendent mode for a initial init*/
   // TODO: check the prescaler for the speed
@@ -222,12 +229,12 @@ void ADC_init_DMA_mode(const deckPin_t pin)
   ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None; // TODO: controlla questo parametro
   ADC_InitStructure.ADC_NbrOfConversion = 1;
   ADC_InitStructure.ADC_ScanConvMode = DISABLE;
-  ADC_Init(ADC1, &ADC_InitStructure);
+  ADC_Init(ADCx, &ADC_InitStructure);
 }
 
 void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_t ADC_SampleTime)
 {
-
+  DEBUG_PRINT("****************** ADC_DMA_start initialized !****************** \n");
   /* According to datasheet, minimum sampling time for 12-bit conversion is 15 cycles. */
   // TODO: check the correct sampling time to insert
   //    questo preso da sito stm esempio ispirazione
@@ -247,6 +254,7 @@ void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_
   ADC_Cmd(ADC_n, ENABLE);
   // Start ADC Conversion
   ADC_SoftwareStartConv(ADC_n);
+  DEBUG_PRINT("****************** ADC_DMA_start ended !****************** \n");
 }
 
 void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
@@ -256,13 +264,13 @@ void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
   // Enable DMA1 channel IRQ Channel
   NVIC_InitTypeDef NVIC_InitStructure;
   NVIC_InitStructure.NVIC_IRQChannel = DMA_IRQ;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1; // questi sono i valori che indicano la priorita
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&NVIC_InitStructure);
 }
 
-void DMA_inititalization(DMA_Stream_TypeDef *DMA_Stream, uint32_t *RawADC, ADC_TypeDef *ADC_n, uint32_t ADC_Channel, IRQn_Type DMA_IRQ, uint16_t BufferSize)
+void DMA_inititalization(DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, ADC_TypeDef *ADC_n, uint32_t DMA_Channel, IRQn_Type DMA_IRQ, uint16_t BufferSize)
 {
 
   DMA_InitTypeDef DMA_InitStructure;
@@ -270,9 +278,9 @@ void DMA_inititalization(DMA_Stream_TypeDef *DMA_Stream, uint32_t *RawADC, ADC_T
 
   //==Configure DMA2 - Stream 4
   DMA_DeInit(DMA_Stream); // Set DMA registers to default values
-  DMA_InitStructure.DMA_Channel = ADC_Channel;
+  DMA_InitStructure.DMA_Channel = DMA_Channel;
   DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC_n->DR; // Source address
-  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)RawADC;        // Destination address
+  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)DMA_Buffer;    // Destination address
   DMA_InitStructure.DMA_BufferSize = BufferSize;                   // Set the buffer size
 
   DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
@@ -288,4 +296,15 @@ void DMA_inititalization(DMA_Stream_TypeDef *DMA_Stream, uint32_t *RawADC, ADC_T
   DMA_Init(DMA_Stream, &DMA_InitStructure); // Initialize the DMA
 
   DMA_IRQ_enable(DMA_Stream, DMA_IRQ);
+}
+
+void DMA2_Stream4_IRQHandler(DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, uint32_t *Another_Buffer, size_t BufferSize)
+{
+  if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4))
+  {
+    DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
+    test = 100;
+    // Copy the data from the DMA buffer to another buffer
+    // memcpy(Another_Buffer, DMA_Buffer, BufferSize * sizeof(uint32_t));
+  }
 }

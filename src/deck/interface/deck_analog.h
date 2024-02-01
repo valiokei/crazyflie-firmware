@@ -32,7 +32,7 @@
 
 /* Voltage reference types for the analogReference() function. */
 #define DEFAULT 0
-#define VREF    3.0
+#define VREF 3.0
 
 void adcInit(void);
 

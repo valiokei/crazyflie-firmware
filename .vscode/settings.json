@@ -33,6 +33,10 @@
         "*.py": "python",
         "stm32fxxx.h": "c",
         "param.h": "c",
-        "debug.h": "c"
+        "debug.h": "c",
+        "stm32f4xx_adc.h": "c",
+        "stm32f4xx_gpio.h": "c",
+        "stm32f4xx.h": "c",
+        "deck_analog.h": "c"
     }
 }
