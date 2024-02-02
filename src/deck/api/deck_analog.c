@@ -234,7 +234,7 @@ void ADC_init_DMA_mode(uint32_t RCC_APB2Periph_ADCx, ADC_TypeDef *ADCx)
 
 void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_t ADC_SampleTime)
 {
-  DEBUG_PRINT("****************** ADC_DMA_start initialized !****************** \n");
+  // DEBUG_PRINT("****************** ADC_DMA_start initialized !****************** \n");
   /* According to datasheet, minimum sampling time for 12-bit conversion is 15 cycles. */
   // TODO: check the correct sampling time to insert
   //    questo preso da sito stm esempio ispirazione
@@ -243,18 +243,19 @@ void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_
   // ADC_RegularChannelConfig(ADC2, channel, 1, ADC_SampleTime_15Cycles);
   ADC_RegularChannelConfig(ADC_n, ADC_Channel, Rank, ADC_SampleTime);
 
+  /*enabling the DMA mode for regular channels group*/
+  ADC_DMACmd(ADC_n, ENABLE);
+
   /*enabling the generation of DMA requests continuously at the end
            of the last DMA transfer*/
   ADC_DMARequestAfterLastTransferCmd(ADC_n, ENABLE);
 
-  /*enabling the DMA mode for regular channels group*/
-  ADC_DMACmd(ADC_n, ENABLE);
-
   // Enable ADC DMA
   ADC_Cmd(ADC_n, ENABLE);
+  // test = 30;
   // Start ADC Conversion
   ADC_SoftwareStartConv(ADC_n);
-  DEBUG_PRINT("****************** ADC_DMA_start ended !****************** \n");
+  // DEBUG_PRINT("****************** ADC_DMA_start ended !****************** \n");
 }
 
 void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
@@ -264,15 +265,15 @@ void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
   // Enable DMA1 channel IRQ Channel
   NVIC_InitTypeDef NVIC_InitStructure;
   NVIC_InitStructure.NVIC_IRQChannel = DMA_IRQ;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1; // questi sono i valori che indicano la priorita
-  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 1;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 14; // questi sono i valori che indicano la priorita
+  NVIC_InitStructure.NVIC_IRQChannelSubPriority = 14;
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&NVIC_InitStructure);
 }
 
-void DMA_inititalization(DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, ADC_TypeDef *ADC_n, uint32_t DMA_Channel, IRQn_Type DMA_IRQ, uint16_t BufferSize)
+void DMA_inititalization(uint32_t RCC_DMA_Peripheral, DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, ADC_TypeDef *ADC_n, uint32_t DMA_Channel, IRQn_Type DMA_IRQ, uint16_t BufferSize)
 {
-
+  RCC_AHB1PeriphClockCmd(RCC_DMA_Peripheral, ENABLE);
   DMA_InitTypeDef DMA_InitStructure;
   DMA_StructInit(&DMA_InitStructure);
 
@@ -295,11 +296,17 @@ void DMA_inititalization(DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, A
   DMA_InitStructure.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
   DMA_Init(DMA_Stream, &DMA_InitStructure); // Initialize the DMA
 
+  DMA_Cmd(DMA_Stream, ENABLE); // Enable the DMA - Stream x
   DMA_IRQ_enable(DMA_Stream, DMA_IRQ);
 }
 
 void DMA2_Stream4_IRQHandler(DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, uint32_t *Another_Buffer, size_t BufferSize)
 {
+  if (DMA_GetITStatus(DMA2_Stream4, DMA_IT_HTIF4))
+  {
+    test = 50;
+    DMA_ClearITPendingBit(DMA2_Stream4, DMA_IT_HTIF4);
+  }
   if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4))
   {
     DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
