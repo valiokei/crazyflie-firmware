@@ -7,12 +7,31 @@
 #include "stm32f4xx_adc.h"
 #include "stm32f4xx_dma.h"
 
-uint32_t DMA_Buffer[19];
+#define ARRAY_SIZE 4096
+uint16_t DMA_Buffer[ARRAY_SIZE];
 ADC_TypeDef *ADC_n = ADC1;
 DMA_Stream_TypeDef *DMA_Stream = DMA2_Stream4;
 uint32_t DMA_Channel = DMA_Channel_0;
 IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
 uint8_t ADC_Channel = ADC_Channel_7;
+volatile uint8_t test = 0;
+void DMA2_Stream4_IRQHandler(void)
+{
+    if (DMA_GetITStatus(DMA_Stream, DMA_IT_HTIF4))
+    {
+        test = 50;
+        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_HTIF4);
+    }
+    if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4))
+    {
+        test = 100;
+        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
+
+        // Copy the data from the DMA buffer to another buffer
+        // memcpy(Another_Buffer, DMA_Buffer, BufferSize * sizeof(uint32_t));
+    }
+}
+
 static void magneticInit()
 {
 
@@ -20,7 +39,7 @@ static void magneticInit()
     // gpio init
     GPIO_init(GPIO_PinSource3);
     // DMA init
-    DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, 19);
+    DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
     // adc init
     ADC_init_DMA_mode(RCC_APB2Periph_ADC1, ADC_n);
     // dma start

@@ -36,8 +36,6 @@
 static uint32_t stregResolution;
 static uint32_t adcRange;
 
-volatile uint8_t test = 0;
-
 void adcInit(void)
 {
   /*
@@ -62,7 +60,7 @@ void adcInit(void)
   ADC_CommonInitStructure.ADC_Mode = ADC_Mode_Independent;
   ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div2; /* HCLK = 168MHz, PCLK2 = 84MHz, ADCCLK = 42MHz (when using ADC_Prescaler_Div2) */
   ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
-  ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
+  ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_15Cycles;
   ADC_CommonInit(&ADC_CommonInitStructure);
 
   /* Init ADC2: 12bit, single-conversion. For Arduino compatibility set 10bit */
@@ -223,10 +221,15 @@ void ADC_init_DMA_mode(uint32_t RCC_APB2Periph_ADCx, ADC_TypeDef *ADCx)
 
   /* init DMA mode ADC setting*/
   // TODO: check the paramenters values
+  // parametri ispirati a https://community.st.com/t5/stm32-mcus-products/stm32f4-discovery-adc-dma-double-buffer/td-p/422343#:~:text=I%20post%20them,should%20be%20illustrative
   ADC_InitStructure.ADC_ContinuousConvMode = ENABLE;
   ADC_InitStructure.ADC_Resolution = ADC_Resolution_12b;
   ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
   ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None; // TODO: controlla questo parametro
+
+  // ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_Rising; // TODO: controlla questo parametro
+  // ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
+
   ADC_InitStructure.ADC_NbrOfConversion = 1;
   ADC_InitStructure.ADC_ScanConvMode = DISABLE;
   ADC_Init(ADCx, &ADC_InitStructure);
@@ -260,7 +263,7 @@ void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_
 
 void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
 {
-  DMA_ITConfig(DMA_Stream, DMA_IT_TC, ENABLE);
+  DMA_ITConfig(DMA_Stream, DMA_IT_HT | DMA_IT_TC, ENABLE);
 
   // Enable DMA1 channel IRQ Channel
   NVIC_InitTypeDef NVIC_InitStructure;
@@ -280,9 +283,9 @@ void DMA_inititalization(uint32_t RCC_DMA_Peripheral, DMA_Stream_TypeDef *DMA_St
   //==Configure DMA2 - Stream 4
   DMA_DeInit(DMA_Stream); // Set DMA registers to default values
   DMA_InitStructure.DMA_Channel = DMA_Channel;
-  DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC_n->DR; // Source address
-  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)DMA_Buffer;    // Destination address
-  DMA_InitStructure.DMA_BufferSize = BufferSize;                   // Set the buffer size
+  DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC_n->DR;  // Source address
+  DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)&DMA_Buffer[0]; // Destination address
+  DMA_InitStructure.DMA_BufferSize = BufferSize;                    // Set the buffer size
 
   DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
   DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
@@ -298,20 +301,4 @@ void DMA_inititalization(uint32_t RCC_DMA_Peripheral, DMA_Stream_TypeDef *DMA_St
 
   DMA_Cmd(DMA_Stream, ENABLE); // Enable the DMA - Stream x
   DMA_IRQ_enable(DMA_Stream, DMA_IRQ);
-}
-
-void DMA2_Stream4_IRQHandler(DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, uint32_t *Another_Buffer, size_t BufferSize)
-{
-  if (DMA_GetITStatus(DMA2_Stream4, DMA_IT_HTIF4))
-  {
-    test = 50;
-    DMA_ClearITPendingBit(DMA2_Stream4, DMA_IT_HTIF4);
-  }
-  if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4))
-  {
-    DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
-    test = 100;
-    // Copy the data from the DMA buffer to another buffer
-    // memcpy(Another_Buffer, DMA_Buffer, BufferSize * sizeof(uint32_t));
-  }
 }
