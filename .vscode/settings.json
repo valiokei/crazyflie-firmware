@@ -14,7 +14,7 @@
             "svdFile": "STM32F405.svd",
             "servertype": "openocd",
             "configFiles": [
-                "interface/stlink-v2.cfg",
+                "interface/stlink.cfg",
                 "target/stm32f4x.cfg"
             ],
             "runToMain": true,
@@ -22,7 +22,8 @@
                 "set mem inaccessible-by-default off",
                 "enable breakpoint",
                 "monitor reset"
-            ]
+            ],
+            "rtos": "FreeRTOS"
         },
         // {
         //     "name": "STM32 App Debug"
@@ -37,6 +38,11 @@
         "stm32f4xx_adc.h": "c",
         "stm32f4xx_gpio.h": "c",
         "stm32f4xx.h": "c",
-        "deck_analog.h": "c"
+        "deck_analog.h": "c",
+        "stm32f4xx_dma.h": "c",
+        "arm_common_tables.h": "c",
+        "arm_math.h": "c",
+        "flattopwinfrompython.h": "c",
+        "stm32f4xx_rcc.h": "c"
     }
 }
