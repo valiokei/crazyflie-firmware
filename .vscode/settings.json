@@ -43,6 +43,7 @@
         "arm_common_tables.h": "c",
         "arm_math.h": "c",
         "flattopwinfrompython.h": "c",
-        "stm32f4xx_rcc.h": "c"
+        "stm32f4xx_rcc.h": "c",
+        "*.old": "c"
     }
 }

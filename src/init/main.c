@@ -1,6 +1,6 @@
 /**
- *    ||          ____  _ __                           
- * +------+      / __ )(_) /_______________ _____  ___ 
+ *    ||          ____  _ __
+ * +------+      / __ )(_) /_______________ _____  ___
  * | 0xBC |     / __  / / __/ ___/ ___/ __ `/_  / / _ \
  * +------+    / /_/ / / /_/ /__/ /  / /_/ / / /_/  __/
  *  ||  ||    /_____/_/\__/\___/_/   \__,_/ /___/\___/
@@ -44,31 +44,33 @@
 
 #include "bootloader.h"
 
-int main() 
+int main()
 {
   check_enter_bootloader();
 
-  //Initialize the platform.
+  // Initialize the platform.
   int err = platformInit();
-  if (err != 0) {
+  if (err != 0)
+  {
     // The firmware is running on the wrong hardware. Halt
-    while(1);
+    while (1)
+      ;
   }
 
-  //Launch the system task that will initialize and start everything
+  // Launch the system task that will initialize and start everything
   systemLaunch();
 
-  //Start the FreeRTOS scheduler
+  // Start the FreeRTOS scheduler
   vTaskStartScheduler();
 
-  //TODO: Move to platform launch failed
+  // TODO: Move to platform launch failed
   ledInit();
   ledSet(0, 1);
   ledSet(1, 1);
 
-  //Should never reach this point!
-  while(1);
+  // Should never reach this point!
+  while (1)
+    ;
 
   return 0;
 }
-

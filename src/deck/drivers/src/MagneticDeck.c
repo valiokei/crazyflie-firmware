@@ -15,27 +15,34 @@
 #include "arm_math.h"
 #include "FlattopWinFromPython.h"
 #include "arm_const_structs.h"
+#include "task.h"
+#include "log.h"
+#include "param.h"
 
 #define CONFIG_DEBUG = y
 
 // ADC DMA configuration
 #define ARRAY_SIZE 4096
 uint16_t DMA_Buffer[ARRAY_SIZE];
-float32_t adc_buf_float[ARRAY_SIZE];
+// float32_t adc_buf_float[ARRAY_SIZE];
 ADC_TypeDef *ADC_n = ADC1;
 DMA_Stream_TypeDef *DMA_Stream = DMA2_Stream4;
 uint32_t DMA_Channel = DMA_Channel_0;
 IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
-uint8_t ADC_Channel = ADC_Channel_7;
-volatile uint8_t test = 0;
 
-// Timer configuration
-#define TIM_PERIF RCC_APB1Periph_TIM5
-#define TIM TIM5
-#define TIM_DBG DBGMCU_TIM5_STOP
-#define TIM_IRQn TIM5_IRQn
-IRQn_Type TIM_IRQ = TIM5_IRQn;
-#define TIM_PERIOD 0x40
+// #define DMA_IRQ DMA2_Stream0_IRQn
+uint8_t ADC_Channel = ADC_Channel_3;
+volatile uint8_t test = 0;
+static bool isInit = false;
+
+volatile uint8_t ADC_Done = 0;
+
+volatile uint8_t ADC_Status = 0;
+volatile uint8_t DMA_status = 0;
+volatile uint8_t DMA_IRQ_status = 0;
+
+volatile uint16_t firstValue = 0;
+volatile uint16_t FirstVolt = 0;
 
 // FFT parameters
 #define FFT_SIZE ARRAY_SIZE / 2
@@ -61,14 +68,10 @@ uint32_t fft_length = FFT_SIZE;
 #define RossoResFreq 87000
 #define RossoIdx 1189
 
-// Create the semaphores
-static SemaphoreHandle_t semaphoreHalfBuffer;
-static SemaphoreHandle_t semaphoreFullBuffer;
-
 // funzione che fa l'fft e prende in input il puntatore ad un buffer di float
 void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer)
 {
-
+    DEBUG_PRINT("performFFT started!\n");
     // perform FFT on first half of buffer
     arm_q15_to_float((q15_t *)Input_buffer_pointer, Output_buffer_pointer, FFT_SIZE);
     int p = 0;
@@ -119,143 +122,87 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     // }
 }
 
-void TIM5_IRQHandler(void)
+static void mytask(void *param)
 {
-    if (test == 50)
-    {
-        test = 46;
-        if (xSemaphoreTake(semaphoreHalfBuffer, portMAX_DELAY) == pdTRUE)
-        {
-            test = 1;
-            // uint16_t *firstHalfPointer = &DMA_Buffer[0];
-            // performFFT(DMA_Buffer, adc_buf_float);
-        }
-        else if (xSemaphoreTake(semaphoreFullBuffer, portMAX_DELAY) == pdTRUE)
-        {
-            test = 1;
-            // perform FFT on second half of buffer
-            // performFFT(DMA_Buffer + FFT_SIZE, adc_buf_float + FFT_SIZE);
-        }
-    }
+    DEBUG_PRINT("Wait for system starting\n");
+    systemWaitStart();
+    DEBUG_PRINT("System Started\n");
 
-    test = 2;
-    // if (TIM_GetITStatus(TIM, TIM_IT_Trigger))
-    // {
-    //     test = 98;
-    //     TIM_ClearITPendingBit(TIM, TIM_IT_Trigger);
-    // }
-
-    // if (TIM_GetITStatus(TIM, TIM_IT_Update))
-    // {
-    //     test = 99;
-    //     TIM_ClearITPendingBit(TIM, TIM_IT_Update);
-    //     if (xSemaphoreTake(semaphoreHalfBuffer, portMAX_DELAY) == pdTRUE)
-    //     {
-    //         test = 1;
-    //         // uint16_t *firstHalfPointer = &DMA_Buffer[0];
-    //         performFFT(DMA_Buffer, adc_buf_float);
-    //     }
-    //     else if (xSemaphoreTake(semaphoreFullBuffer, portMAX_DELAY) == pdTRUE)
-    //     {
-    //         test = 1;
-    //         // perform FFT on second half of buffer
-    //         performFFT(DMA_Buffer + FFT_SIZE, adc_buf_float + FFT_SIZE);
-    //     }
-    // }
-}
-
-void DMA2_Stream4_IRQHandler(void)
-{
-    if (DMA_GetITStatus(DMA_Stream, DMA_IT_HTIF4) && (xSemaphoreTake(semaphoreHalfBuffer, portMAX_DELAY) == pdTRUE))
-    {
-        test = 50;
-        // Give the semaphore
-        xSemaphoreGive(semaphoreHalfBuffer);
-        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_HTIF4);
-    }
-    if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4) && (xSemaphoreTake(semaphoreHalfBuffer, portMAX_DELAY) == pdTRUE))
-    {
-        test = 50;
-        // xgetTick();
-        // Give the semaphore
-        xSemaphoreGive(semaphoreFullBuffer);
-        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
-    }
-}
-
-static void setUpHwTimer()
-{
-    // Init structures
-    TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
-    NVIC_InitTypeDef NVIC_InitStructure;
-
-    /* TIM3 clock enable */
-    RCC_APB1PeriphClockCmd(TIM_PERIF, ENABLE);
-
-    /* Enable the TIM3 gloabal Interrupt */
-    NVIC_InitStructure.NVIC_IRQChannel = TIM_IRQn;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 14;
-    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 14;
-    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_Init(&NVIC_InitStructure);
-
-    // Timer configuration
-    TIM_TimeBaseStructure.TIM_Period = TIM_PERIOD - 1;
-    TIM_TimeBaseStructure.TIM_Prescaler = 0x05;
-    TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV2;
-    TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
-    TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
-    TIM_TimeBaseInit(TIM, &TIM_TimeBaseStructure);
-
-    // Enable the timer
-    TIM_ITConfig(TIM, TIM_IT_Update, ENABLE);
-
-    // Enable the timer
-    TIM_Cmd(TIM, ENABLE);
-}
-
-static void magneticInit()
-{
-    DEBUG_PRINT("MAGNETIC init started!\n");
-    // Set up the semaphores
-    semaphoreHalfBuffer = xSemaphoreCreateBinary();
-    xSemaphoreGive(semaphoreHalfBuffer);
-    semaphoreFullBuffer = xSemaphoreCreateBinary();
-    xSemaphoreGive(semaphoreFullBuffer);
-    DEBUG_PRINT("MAGNETIC Semaphore created!\n");
-
-    // xSemaphoreGive(semaphoreHalfBuffer);
-    // if (xSemaphoreTake(semaphoreHalfBuffer, portMAX_DELAY) == pdTRUE)
-    // {
-    //     test = 1;
-    // }
-    // else
-    // {
-    //     test = 2;
-    // }
-    // setup the hardware timer
-    // setUpHwTimer();
-    // setup the FFT instance
-    arm_rfft_fast_init_f32(&fft_instance, fft_length);
-
-    // RCC_APB2_Peripherals RCC_APB2_Peripheral = RCC_APB2Periph_ADC1;
     // gpio init
-    GPIO_init(GPIO_PinSource3);
+    GPIO_init(DECK_GPIO_RX2);
     // DMA init
     DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
     // adc init
     ADC_init_DMA_mode(RCC_APB2Periph_ADC1, ADC_n);
-    // dma start
-    // adc start
-
-    // // Take both the buffers
-    // xSemaphoreTake(semaphoreHalfBuffer, portMAX_DELAY);
-    // xSemaphoreTake(semaphoreFullBuffer, portMAX_DELAY);
-
     // Call the ADC_DMA_start function
+
     ADC_DMA_start(ADC_n, ADC_Channel, 1, ADC_SampleTime_15Cycles);
 
-    DEBUG_PRINT("MAGNETIC init ended!\n");
+    arm_rfft_fast_init_f32(&fft_instance, fft_length);
+    DEBUG_PRINT("FFT initialized\n");
+    while (1)
+    {
+        DEBUG_PRINT("While\n");
+        if (ADC_Done == 1)
+        {
+            // perform FFT on second half of buffer
+            // performFFT(DMA_Buffer + FFT_SIZE, adc_buf_float + FFT_SIZE);
+            // DEBUG_PRINT("FFT_should be here\n");
+
+            firstValue = DMA_Buffer[1000];
+            FirstVolt = firstValue * ADC_MAX_VOLTAGE / ADC_LEVELS;
+            // log the first value of adc_buf_float
+            // DEBUG_PRINT("firstValue: %f\n", firstValue);
+            // DEBUG_PRINT("FirstVolt: %f\n", FirstVolt);
+
+            DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
+            // adc init
+            ADC_init_DMA_mode(RCC_APB2Periph_ADC1, ADC_n);
+            ADC_DMA_start(ADC_n, ADC_Channel, 1, ADC_SampleTime_15Cycles);
+
+            ADC_Done = 0;
+        }
+        else
+        {
+            // DEBUG_PRINT("ADC_Done is 0\n");
+        }
+
+        vTaskDelay(M2T(10));
+    }
+}
+
+void DMA2_Stream4_IRQHandler(void)
+{
+    // DEBUG_PRINT("DMA2_Stream4_IRQHandler\n");
+    // if (DMA_GetITStatus(DMA_Stream, DMA_IT_HTIF0)) //&& (xSemaphoreTake(semaphoreHalfBuffer, 0) == pdTRUE))
+    // {
+    //     // ADC_Cmd(ADC_n, DISABLE);
+    //     // DEBUG_PRINT("ADC disabled\n");
+    //     DMA_ClearITPendingBit(DMA_Stream, DMA_IT_HTIF0);
+    // }
+
+    if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4)) //&& (xSemaphoreTake(semaphoreHalfBuffer, 0) == pdTRUE))
+    {
+        // ADC_Cmd(ADC_n, DISABLE);
+        // DEBUG_PRINT("ADC disabled\n");
+        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
+        ADC_Done = 1;
+    }
+}
+
+static void magneticInit()
+{
+    if (isInit)
+    {
+        return;
+    }
+    DEBUG_PRINT("MAGNETIC init started!\n");
+
+    xTaskCreate(mytask, MAGNETIC_TASK_NAME,
+                MAGNETIC_TASK_STACKSIZE, NULL, MAGNETIC_TASK_PRI, NULL);
+
+    // DEBUG_PRINT("MAGNETIC init ended!\n");
+    isInit = true;
 }
 
 static bool magneticTest()
@@ -269,7 +216,11 @@ static const DeckDriver magneticDriver = {
     .usedGpio = DECK_USING_PA3,
     .init = magneticInit,
     .test = magneticTest,
-    .usedPeriph = DECK_USING_TIMER5,
 };
 
 DECK_DRIVER(magneticDriver);
+#define CONFIG_DEBUG_LOG_ENABLE = y
+LOG_GROUP_START(example)
+LOG_ADD_DEBUG(LOG_UINT16, firstValue, &firstValue)
+LOG_ADD_DEBUG(LOG_UINT16, FirstVolt, &FirstVolt)
+LOG_GROUP_STOP(example)

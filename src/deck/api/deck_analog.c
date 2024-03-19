@@ -184,9 +184,10 @@ void GPIO_init(const deckPin_t pin)
   GPIO_InitTypeDef GPIO_InitStructure;
   GPIO_StructInit(&GPIO_InitStructure);
   /* Initialise the GPIO pin to analog mode. */
+  DEBUG_PRINT("pin.id: %d\n", pin.id);
   GPIO_InitStructure.GPIO_Pin = deckGPIOMapping[pin.id].pin;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AN;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz; // non so se è necessario
+  // GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz; // non so se è necessario
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_Init(deckGPIOMapping[pin.id].port, &GPIO_InitStructure);
 }
@@ -263,7 +264,8 @@ void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_
 
 void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
 {
-  DMA_ITConfig(DMA_Stream, DMA_IT_HT | DMA_IT_TC, ENABLE);
+  // DMA_ITConfig(DMA_Stream, DMA_IT_HT | DMA_IT_TC, ENABLE);
+  DMA_ITConfig(DMA_Stream, DMA_IT_TC, ENABLE);
 
   // Enable DMA1 channel IRQ Channel
   NVIC_InitTypeDef NVIC_InitStructure;
@@ -291,8 +293,8 @@ void DMA_inititalization(uint32_t RCC_DMA_Peripheral, DMA_Stream_TypeDef *DMA_St
   DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
   DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord; // source size - 16bit
   DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;         // destination size = 16b
-  DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
-  DMA_InitStructure.DMA_Priority = DMA_Priority_High;
+  DMA_InitStructure.DMA_Mode = DMA_Mode_Normal;
+  DMA_InitStructure.DMA_Priority = DMA_Priority_Low;
   DMA_InitStructure.DMA_FIFOMode = DMA_FIFOMode_Disable;
   DMA_InitStructure.DMA_FIFOThreshold = DMA_FIFOThreshold_HalfFull;
   DMA_InitStructure.DMA_MemoryBurst = DMA_MemoryBurst_Single;

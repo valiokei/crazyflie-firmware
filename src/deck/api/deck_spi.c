@@ -37,49 +37,48 @@
 #include "config.h"
 #include "nvicconf.h"
 
-#define SPI                     SPI1
-#define SPI_CLK                 RCC_APB2Periph_SPI1
-#define SPI_CLK_INIT            RCC_APB2PeriphClockCmd
-#define SPI_IRQ_HANDLER         SPI1_IRQHandler
-#define SPI_IRQn                SPI1_IRQn
+#define SPI SPI1
+#define SPI_CLK RCC_APB2Periph_SPI1
+#define SPI_CLK_INIT RCC_APB2PeriphClockCmd
+#define SPI_IRQ_HANDLER SPI1_IRQHandler
+#define SPI_IRQn SPI1_IRQn
 
-#define SPI_DMA_IRQ_PRIO        (NVIC_HIGH_PRI)
-#define SPI_DMA                 DMA2
-#define SPI_DMA_CLK             RCC_AHB1Periph_DMA2
-#define SPI_DMA_CLK_INIT        RCC_AHB1PeriphClockCmd
+#define SPI_DMA_IRQ_PRIO (NVIC_HIGH_PRI)
+#define SPI_DMA DMA2
+#define SPI_DMA_CLK RCC_AHB1Periph_DMA2
+#define SPI_DMA_CLK_INIT RCC_AHB1PeriphClockCmd
 
-#define SPI_TX_DMA_STREAM       DMA2_Stream5
-#define SPI_TX_DMA_IRQ          DMA2_Stream5_IRQn
-#define SPI_TX_DMA_IRQHandler   DMA2_Stream5_IRQHandler
-#define SPI_TX_DMA_CHANNEL      DMA_Channel_3
-#define SPI_TX_DMA_FLAG_TCIF    DMA_FLAG_TCIF5
+#define SPI_TX_DMA_STREAM DMA2_Stream5
+#define SPI_TX_DMA_IRQ DMA2_Stream5_IRQn
+#define SPI_TX_DMA_IRQHandler DMA2_Stream5_IRQHandler
+#define SPI_TX_DMA_CHANNEL DMA_Channel_3
+#define SPI_TX_DMA_FLAG_TCIF DMA_FLAG_TCIF5
 
-#define SPI_RX_DMA_STREAM       DMA2_Stream0
-#define SPI_RX_DMA_IRQ          DMA2_Stream0_IRQn
-#define SPI_RX_DMA_IRQHandler   DMA2_Stream0_IRQHandler
-#define SPI_RX_DMA_CHANNEL      DMA_Channel_3
-#define SPI_RX_DMA_FLAG_TCIF    DMA_FLAG_TCIF0
+#define SPI_RX_DMA_STREAM DMA2_Stream0
+#define SPI_RX_DMA_IRQ DMA2_Stream0_IRQn
+#define SPI_RX_DMA_IRQHandler DMA2_Stream0_IRQHandler
+#define SPI_RX_DMA_CHANNEL DMA_Channel_3
+#define SPI_RX_DMA_FLAG_TCIF DMA_FLAG_TCIF0
 
-#define SPI_SCK_PIN             GPIO_Pin_5
-#define SPI_SCK_GPIO_PORT       GPIOA
-#define SPI_SCK_GPIO_CLK        RCC_AHB1Periph_GPIOA
-#define SPI_SCK_SOURCE          GPIO_PinSource5
-#define SPI_SCK_AF              GPIO_AF_SPI1
+#define SPI_SCK_PIN GPIO_Pin_5
+#define SPI_SCK_GPIO_PORT GPIOA
+#define SPI_SCK_GPIO_CLK RCC_AHB1Periph_GPIOA
+#define SPI_SCK_SOURCE GPIO_PinSource5
+#define SPI_SCK_AF GPIO_AF_SPI1
 
-#define SPI_MISO_PIN            GPIO_Pin_6
-#define SPI_MISO_GPIO_PORT      GPIOA
-#define SPI_MISO_GPIO_CLK       RCC_AHB1Periph_GPIOA
-#define SPI_MISO_SOURCE         GPIO_PinSource6
-#define SPI_MISO_AF             GPIO_AF_SPI1
+#define SPI_MISO_PIN GPIO_Pin_6
+#define SPI_MISO_GPIO_PORT GPIOA
+#define SPI_MISO_GPIO_CLK RCC_AHB1Periph_GPIOA
+#define SPI_MISO_SOURCE GPIO_PinSource6
+#define SPI_MISO_AF GPIO_AF_SPI1
 
-#define SPI_MOSI_PIN            GPIO_Pin_7
-#define SPI_MOSI_GPIO_PORT      GPIOA
-#define SPI_MOSI_GPIO_CLK       RCC_AHB1Periph_GPIOA
-#define SPI_MOSI_SOURCE         GPIO_PinSource7
-#define SPI_MOSI_AF             GPIO_AF_SPI1
+#define SPI_MOSI_PIN GPIO_Pin_7
+#define SPI_MOSI_GPIO_PORT GPIOA
+#define SPI_MOSI_GPIO_CLK RCC_AHB1Periph_GPIOA
+#define SPI_MOSI_SOURCE GPIO_PinSource7
+#define SPI_MOSI_AF GPIO_AF_SPI1
 
-
-#define DUMMY_BYTE         0xA5
+#define DUMMY_BYTE 0xA5
 
 static bool isInit = false;
 
@@ -89,7 +88,6 @@ static SemaphoreHandle_t spiMutex;
 
 static void spiDMAInit();
 static void spiConfigureWithSpeed(uint16_t baudRatePrescaler);
-
 
 void spiBegin(void)
 {
@@ -106,7 +104,8 @@ void spiBegin(void)
 
   /*!< Enable GPIO clocks */
   RCC_AHB1PeriphClockCmd(SPI_SCK_GPIO_CLK | SPI_MISO_GPIO_CLK |
-                         SPI_MOSI_GPIO_CLK, ENABLE);
+                             SPI_MOSI_GPIO_CLK,
+                         ENABLE);
 
   /*!< Enable DMA Clocks */
   SPI_DMA_CLK_INIT(SPI_DMA_CLK, ENABLE);
@@ -122,9 +121,9 @@ void spiBegin(void)
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
 #ifdef DECK_SPI_MODE3
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_UP;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
 #else
-  GPIO_InitStructure.GPIO_PuPd  = GPIO_PuPd_DOWN;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN;
 #endif
 
   /*!< SPI SCK pin configuration */
@@ -132,11 +131,11 @@ void spiBegin(void)
   GPIO_Init(SPI_SCK_GPIO_PORT, &GPIO_InitStructure);
 
   /*!< SPI MOSI pin configuration */
-  GPIO_InitStructure.GPIO_Pin =  SPI_MOSI_PIN;
+  GPIO_InitStructure.GPIO_Pin = SPI_MOSI_PIN;
   GPIO_Init(SPI_MOSI_GPIO_PORT, &GPIO_InitStructure);
 
   /*!< SPI MISO pin configuration */
-  GPIO_InitStructure.GPIO_Pin =  SPI_MISO_PIN;
+  GPIO_InitStructure.GPIO_Pin = SPI_MISO_PIN;
   GPIO_Init(SPI_MISO_GPIO_PORT, &GPIO_InitStructure);
 
   /*!< SPI DMA Initialization */
@@ -150,34 +149,34 @@ void spiBegin(void)
 
 static void spiDMAInit()
 {
-  DMA_InitTypeDef  DMA_InitStructure;
+  DMA_InitTypeDef DMA_InitStructure;
   NVIC_InitTypeDef NVIC_InitStructure;
 
   /* Configure DMA Initialization Structure */
-  DMA_InitStructure.DMA_FIFOMode = DMA_FIFOMode_Disable ;
-  DMA_InitStructure.DMA_FIFOThreshold = DMA_FIFOThreshold_1QuarterFull ;
-  DMA_InitStructure.DMA_MemoryBurst = DMA_MemoryBurst_Single ;
+  DMA_InitStructure.DMA_FIFOMode = DMA_FIFOMode_Disable;
+  DMA_InitStructure.DMA_FIFOThreshold = DMA_FIFOThreshold_1QuarterFull;
+  DMA_InitStructure.DMA_MemoryBurst = DMA_MemoryBurst_Single;
   DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_Byte;
   DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
   DMA_InitStructure.DMA_Mode = DMA_Mode_Normal;
-  DMA_InitStructure.DMA_PeripheralBaseAddr =(uint32_t) (&(SPI->DR)) ;
+  DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)(&(SPI->DR));
   DMA_InitStructure.DMA_PeripheralBurst = DMA_PeripheralBurst_Single;
   DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Byte;
   DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
   DMA_InitStructure.DMA_Priority = DMA_Priority_High;
-  DMA_InitStructure.DMA_BufferSize = 0; // set later
+  DMA_InitStructure.DMA_BufferSize = 0;      // set later
   DMA_InitStructure.DMA_Memory0BaseAddr = 0; // set later
 
   // Configure TX DMA
   DMA_InitStructure.DMA_Channel = SPI_TX_DMA_CHANNEL;
   DMA_InitStructure.DMA_DIR = DMA_DIR_MemoryToPeripheral;
-  DMA_Cmd(SPI_TX_DMA_STREAM,DISABLE);
+  DMA_Cmd(SPI_TX_DMA_STREAM, DISABLE);
   DMA_Init(SPI_TX_DMA_STREAM, &DMA_InitStructure);
 
   // Configure RX DMA
   DMA_InitStructure.DMA_Channel = SPI_RX_DMA_CHANNEL;
   DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralToMemory;
-  DMA_Cmd(SPI_RX_DMA_STREAM,DISABLE);
+  DMA_Cmd(SPI_RX_DMA_STREAM, DISABLE);
   DMA_Init(SPI_RX_DMA_STREAM, &DMA_InitStructure);
 
   // Configure interrupts
@@ -194,7 +193,7 @@ static void spiDMAInit()
 
 static void spiConfigureWithSpeed(uint16_t baudRatePrescaler)
 {
-  SPI_InitTypeDef  SPI_InitStructure;
+  SPI_InitTypeDef SPI_InitStructure;
 
   SPI_I2S_DeInit(SPI);
 
@@ -221,7 +220,7 @@ bool spiTest(void)
   return isInit;
 }
 
-bool spiExchange(size_t length, const uint8_t * data_tx, uint8_t * data_rx)
+bool spiExchange(size_t length, const uint8_t *data_tx, uint8_t *data_rx)
 {
   ASSERT_DMA_SAFE(data_tx);
   ASSERT_DMA_SAFE(data_rx);
@@ -238,12 +237,12 @@ bool spiExchange(size_t length, const uint8_t * data_tx, uint8_t * data_rx)
   DMA_ITConfig(SPI_RX_DMA_STREAM, DMA_IT_TC, ENABLE);
 
   // Clear DMA Flags
-  DMA_ClearFlag(SPI_TX_DMA_STREAM, DMA_FLAG_FEIF5|DMA_FLAG_DMEIF5|DMA_FLAG_TEIF5|DMA_FLAG_HTIF5|DMA_FLAG_TCIF5);
-  DMA_ClearFlag(SPI_RX_DMA_STREAM, DMA_FLAG_FEIF0|DMA_FLAG_DMEIF0|DMA_FLAG_TEIF0|DMA_FLAG_HTIF0|DMA_FLAG_TCIF0);
+  DMA_ClearFlag(SPI_TX_DMA_STREAM, DMA_FLAG_FEIF5 | DMA_FLAG_DMEIF5 | DMA_FLAG_TEIF5 | DMA_FLAG_HTIF5 | DMA_FLAG_TCIF5);
+  DMA_ClearFlag(SPI_RX_DMA_STREAM, DMA_FLAG_FEIF0 | DMA_FLAG_DMEIF0 | DMA_FLAG_TEIF0 | DMA_FLAG_HTIF0 | DMA_FLAG_TCIF0);
 
   // Enable DMA Streams
-  DMA_Cmd(SPI_TX_DMA_STREAM,ENABLE);
-  DMA_Cmd(SPI_RX_DMA_STREAM,ENABLE);
+  DMA_Cmd(SPI_TX_DMA_STREAM, ENABLE);
+  DMA_Cmd(SPI_RX_DMA_STREAM, ENABLE);
 
   // Enable SPI DMA requests
   SPI_I2S_DMACmd(SPI, SPI_I2S_DMAReq_Tx, ENABLE);
@@ -253,8 +252,7 @@ bool spiExchange(size_t length, const uint8_t * data_tx, uint8_t * data_rx)
   SPI_Cmd(SPI, ENABLE);
 
   // Wait for completion
-  bool result = (xSemaphoreTake(txComplete, portMAX_DELAY) == pdTRUE)
-             && (xSemaphoreTake(rxComplete, portMAX_DELAY) == pdTRUE);
+  bool result = (xSemaphoreTake(txComplete, portMAX_DELAY) == pdTRUE) && (xSemaphoreTake(rxComplete, portMAX_DELAY) == pdTRUE);
 
   // Disable peripheral
   SPI_Cmd(SPI, DISABLE);
@@ -281,13 +279,13 @@ void __attribute__((used)) SPI_TX_DMA_IRQHandler(void)
   DMA_ClearITPendingBit(SPI_TX_DMA_STREAM, SPI_TX_DMA_FLAG_TCIF);
 
   // Clear stream flags
-  DMA_ClearFlag(SPI_TX_DMA_STREAM,SPI_TX_DMA_FLAG_TCIF);
+  DMA_ClearFlag(SPI_TX_DMA_STREAM, SPI_TX_DMA_FLAG_TCIF);
 
   // Disable SPI DMA requests
   SPI_I2S_DMACmd(SPI, SPI_I2S_DMAReq_Tx, DISABLE);
 
   // Disable streams
-  DMA_Cmd(SPI_TX_DMA_STREAM,DISABLE);
+  DMA_Cmd(SPI_TX_DMA_STREAM, DISABLE);
 
   // Give the semaphore, allowing the SPI transaction to complete
   xSemaphoreGiveFromISR(txComplete, &xHigherPriorityTaskWoken);
@@ -307,13 +305,13 @@ void __attribute__((used)) SPI_RX_DMA_IRQHandler(void)
   DMA_ClearITPendingBit(SPI_RX_DMA_STREAM, SPI_RX_DMA_FLAG_TCIF);
 
   // Clear stream flags
-  DMA_ClearFlag(SPI_RX_DMA_STREAM,SPI_RX_DMA_FLAG_TCIF);
+  DMA_ClearFlag(SPI_RX_DMA_STREAM, SPI_RX_DMA_FLAG_TCIF);
 
   // Disable SPI DMA requests
   SPI_I2S_DMACmd(SPI, SPI_I2S_DMAReq_Rx, DISABLE);
 
   // Disable streams
-  DMA_Cmd(SPI_RX_DMA_STREAM,DISABLE);
+  DMA_Cmd(SPI_RX_DMA_STREAM, DISABLE);
 
   // Give the semaphore, allowing the SPI transaction to complete
   xSemaphoreGiveFromISR(rxComplete, &xHigherPriorityTaskWoken);
