@@ -192,6 +192,18 @@ void GPIO_init(const deckPin_t pin)
   GPIO_Init(deckGPIOMapping[pin.id].port, &GPIO_InitStructure);
 }
 
+void setADC_Off(ADC_TypeDef *ADCx)
+{
+  // https: // www.st.com/resource/en/reference_manual/rm0090-stm32f405415-stm32f407417-stm32f427437-and-stm32f429439-advanced-armbased-32bit-mcus-stmicroelectronics.pdf
+  //   ADC on-off control
+  // The ADC is powered on by setting the ADON bit in the ADC_CR2 register. When the ADON
+  // bit is set for the first time, it wakes up the ADC from the Power-down mode.
+  // Conversion starts when either the SWSTART or the JSWSTART bit is set.
+  // You can stop conversion and put the ADC in power down mode by clearing the ADON bit. In
+  // this mode the ADC consumes almost no power (only a few µA).
+  return;
+}
+
 void ADC_init_DMA_mode(uint32_t RCC_APB2Periph_ADCx, ADC_TypeDef *ADCx)
 {
   // Penso che questo debba essere fatto dopo l'init del dma
@@ -216,9 +228,9 @@ void ADC_init_DMA_mode(uint32_t RCC_APB2Periph_ADCx, ADC_TypeDef *ADCx)
   /* enable ADC in indipendent mode for a initial init*/
   // TODO: check the prescaler for the speed
   ADC_CommonInitStructure.ADC_Mode = ADC_Mode_Independent;
-  ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div2; /* HCLK = 168MHz, PCLK2 = 84MHz, ADCCLK = 42MHz (when using ADC_Prescaler_Div2) */
+  ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div6; /* HCLK = 168MHz, PCLK2 = 84MHz, ADCCLK = 42MHz (when using ADC_Prescaler_Div2) */
   ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
-  ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_15Cycles;
+  // ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
   ADC_CommonInit(&ADC_CommonInitStructure);
 
   /* init DMA mode ADC setting*/
