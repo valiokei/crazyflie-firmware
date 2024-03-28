@@ -24,30 +24,31 @@
 // ADC DMA configuration
 #define ARRAY_SIZE 2048
 uint16_t DMA_Buffer[ARRAY_SIZE];
-// float32_t adc_buf_float[ARRAY_SIZE];
 ADC_TypeDef *ADC_n = ADC1;
 DMA_Stream_TypeDef *DMA_Stream = DMA2_Stream4;
 uint32_t DMA_Channel = DMA_Channel_0;
 IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
+// 2^12 DOVE 12 SONO I BIT DELL'ADC DEL MCU = 4096
+#define ADC_LEVELS 4096
+#define ADC_MAX_VOLTAGE 3.3
+#define PCLK2 84e6
+#define ADC_PRESCALER 6
+// 12 from bit and 15 from the register value 12+15 = 27
+#define ADC_Full_Sampling_Time 27
+#define Fc_ADC (PCLK2 / ADC_PRESCALER / ADC_Full_Sampling_Time)
 
 // #define DMA_IRQ DMA2_Stream0_IRQn
 uint8_t ADC_Channel = ADC_Channel_3;
 volatile uint8_t test = 0;
 static bool isInit = false;
 
+// ADC flag to check if the conversion is done
 volatile uint8_t ADC_Done = 0;
 
-volatile uint8_t ADC_Status = 0;
-volatile uint8_t DMA_status = 0;
-volatile uint8_t DMA_IRQ_status = 0;
-
+// Debug variables
 volatile uint16_t firstValue = 0;
 volatile uint16_t FirstVolt = 0;
 volatile float32_t logNeroAmpl = 0;
-
-uint32_t maxindex;
-float32_t maxval;
-uint32_t valueToExclude = 5;
 
 // FFT parameters
 #define FFT_SIZE ARRAY_SIZE
@@ -56,61 +57,39 @@ float32_t fft_output[FFT_SIZE];
 float32_t fft_magnitude[FFT_SIZE / 2];
 arm_rfft_fast_instance_f32 fft_instance;
 uint32_t fft_length = FFT_SIZE;
+#define BIN_SIZE (Fc_ADC / FFT_SIZE)
 
-// 2^12 DOVE 12 SONO I BIT DELL'ADC DEL MCU = 4096
-#define ADC_LEVELS 4096
-#define ADC_MAX_VOLTAGE 3.3
-
+// ------ Anchors Parameters -------
 // Resonance Freqs Anchors in Hz
-#define NeroResFreq 117000
-// #define NeroIdx 321
-#define NeroIdx 2
-#define GialloResFreq 97000
-#define GialloIdx 1325
-#define GrigioResFreq 107000
-#define GrigioIdx 1462
-#define RossoResFreq 87000
-#define RossoIdx 1189
+#define NeroResFreq 213e3
+#define NeroIdx (int)(NeroResFreq / BIN_SIZE)
+#define Nero_M -2.804
+#define Nero_Q -2.635
+int Nero_Position[] = {0, 0, 0};
+#define Nero_Id 0
 
-static uint32_t IDx = NeroIdx;
+#define GialloResFreq 203e3
+#define GialloIdx (int)(GialloResFreq / BIN_SIZE)
+#define Giallo_M -2.887
+#define Giallo_Q -2.629
+int Giallo_Position[] = {1.99, 0.0, 0};
+#define Giallo_Id 1
 
-// #define SAMPLES 128
-// const int samplingFreq = 1000;
-// float32_t mySine[SAMPLES];
-// float32_t rfft_output[SAMPLES];
-// float32_t test_output[SAMPLES / 2];
-// float32_t maxvalue = 10000;
-// uint32_t maxindex = 100;
-// void performFakeFFT()
-// {
-//     int peakFrequency;
-//     int f = 150;
-//     int A = 58;
-//     // Create input signal
-//     for (int i = 0; i < SAMPLES; i++)
-//     {
-//         mySine[i] = A * arm_sin_f32(2 * PI * f * i / samplingFreq);
-//     }
-//     // Create RFFT instance
-//     arm_rfft_fast_instance_f32 S;
-//     arm_rfft_fast_init_f32(&S, SAMPLES);
+#define GrigioResFreq 193e3
+#define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
+#define Grigio_M -2.902
+#define Grigio_Q -2.647
+int Grigio_Position[] = {1.98, 1.97, 0};
+#define Grigio_Id 2
 
-//     // RFFT transform
-//     arm_rfft_fast_f32(&S, mySine, rfft_output, 0);
-//     // Calculate magnitude of imaginary coefficients
-//     arm_cmplx_mag_f32(rfft_output, test_output, SAMPLES / 2);
-//     // Set DC component to 0
-//     test_output[0] = 0;
-//     // Obtain peak frequency
-//     arm_max_f32(test_output, SAMPLES / 2, &maxvalue, &maxindex);
+#define RossoResFreq 183e3
+#define RossoIdx (int)(RossoResFreq / BIN_SIZE)
+#define Rosso_M -2.950
+#define Rosso_Q -2.640
+int Rosso_Position[] = {-0.05, 2.02, 0};
+#define Rosso_Id 3
 
-//     peakFrequency = maxindex * samplingFreq / SAMPLES;
-
-//     DEBUG_PRINT("Peak frequency %d \n\r", peakFrequency);
-
-//     DEBUG_PRINT("Max Value:[%ld]:%f Output=[", maxindex, 2 * maxvalue / SAMPLES);
-//     DEBUG_PRINT("]\r\n");
-// }
+#define MagneticStandardDeviation 0.10
 
 // funzione che fa l'fft e prende in input il puntatore ad un buffer di float
 void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer)
@@ -144,25 +123,21 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     // calcolo le ampiezze della fft
     arm_cmplx_mag_f32(fft_output, fft_magnitude, FFT_SIZE / 2);
 
-    // leggo le ampiezze per ciascun ancora
+    // arm_max_f32(&fft_magnitude[valueToExclude], (FFT_SIZE / 2) - valueToExclude, &maxval, &maxindex);
+    // IDx = maxindex + valueToExclude;
 
-    // computing the index of the resonance frequency
+    float32_t NeroAmpl = fft_magnitude[NeroIdx];
+    float32_t GialloAmpl = fft_magnitude[GialloIdx];
+    float32_t GrigioAmpl = fft_magnitude[GrigioIdx];
+    float32_t RossoAmpl = fft_magnitude[RossoIdx];
 
-    arm_max_f32(&fft_magnitude[valueToExclude], (FFT_SIZE / 2) - valueToExclude, &maxval, &maxindex);
-
-    IDx = maxindex + valueToExclude;
-    float32_t NeroAmpl = fft_magnitude[IDx];
     // DEBUG_PRINT("NeroAmpl: %f\n", NeroAmpl);
 
-    // float32_t GialloAmpl = fft_magnitude[GialloIdx];
-    // float32_t GrigioAmpl = fft_magnitude[GrigioIdx];
-    // float32_t RossoAmpl = fft_magnitude[RossoIdx];
-
-    // compute the log10 of the amplitude
-    float32_t logNeroAmpl = pow(10, log10(NeroAmpl));
-    DEBUG_PRINT("NeroAmpl_log10: %f\n", logNeroAmpl);
-
-    // TODO CAPIRE QUI COME MANDARE I DATI
+    // compute the the distances from the amplitude of each anchor
+    float32_t Nero_distance = pow(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
+    float32_t Giallo_distance = pow(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
+    float32_t Grigio_distance = pow(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
+    float32_t Rosso_distance = pow(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
 
     // if ((options->combinedAnchorPositionOk || options->anchorPosition[current_anchor].timestamp) &&
     //     (diff < (OUTLIER_TH * stddev)))
@@ -174,8 +149,47 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     //     dist.z = options->anchorPosition[current_anchor].z;
     //     dist.anchorId = current_anchor;
     //     dist.stdDev = 0.25;
-    //     estimatorEnqueueDistance(&dist);
-    // }
+    // estimatorEnqueueDistance(&dist);
+
+    // Nero
+    distanceMeasurement_t dist_Nero;
+    dist_Nero.distance = Nero_distance;
+    dist_Nero.x = Nero_Position[0];
+    dist_Nero.y = Nero_Position[1];
+    dist_Nero.z = Nero_Position[2];
+    dist_Nero.anchorId = Nero_Id;
+    dist_Nero.stdDev = MagneticStandardDeviation;
+    estimatorEnqueueDistance(&dist_Nero);
+
+    // Giallo
+    distanceMeasurement_t dist_Giallo;
+    dist_Giallo.distance = Giallo_distance;
+    dist_Giallo.x = Giallo_Position[0];
+    dist_Giallo.y = Giallo_Position[1];
+    dist_Giallo.z = Giallo_Position[2];
+    dist_Giallo.anchorId = Giallo_Id;
+    dist_Giallo.stdDev = MagneticStandardDeviation;
+    estimatorEnqueueDistance(&dist_Giallo);
+
+    // Grigio
+    distanceMeasurement_t dist_Grigio;
+    dist_Grigio.distance = Grigio_distance;
+    dist_Grigio.x = Grigio_Position[0];
+    dist_Grigio.y = Grigio_Position[1];
+    dist_Grigio.z = Grigio_Position[2];
+    dist_Grigio.anchorId = Grigio_Id;
+    dist_Grigio.stdDev = MagneticStandardDeviation;
+    estimatorEnqueueDistance(&dist_Grigio);
+
+    // Rosso
+    distanceMeasurement_t dist_Rosso;
+    dist_Rosso.distance = Rosso_distance;
+    dist_Rosso.x = Rosso_Position[0];
+    dist_Rosso.y = Rosso_Position[1];
+    dist_Rosso.z = Rosso_Position[2];
+    dist_Rosso.anchorId = Rosso_Id;
+    dist_Rosso.stdDev = MagneticStandardDeviation;
+    estimatorEnqueueDistance(&dist_Rosso);
 }
 
 static void mytask(void *param)
@@ -275,10 +289,9 @@ LOG_GROUP_START(example)
 LOG_ADD_DEBUG(LOG_UINT16, firstValue, &firstValue)
 LOG_ADD_DEBUG(LOG_UINT16, FirstVolt, &FirstVolt)
 LOG_ADD_DEBUG(LOG_FLOAT, logNeroAmpl, &logNeroAmpl)
-LOG_ADD_DEBUG(LOG_FLOAT, maxval, &maxval)
 LOG_GROUP_STOP(example)
 
-PARAM_GROUP_START(FFT)
-PARAM_ADD(PARAM_UINT32, IDx, &IDx)
-PARAM_ADD(PARAM_UINT32, valueToExclude, &valueToExclude)
-PARAM_GROUP_STOP(FFT)
+// PARAM_GROUP_START(FFT)
+// PARAM_ADD(PARAM_UINT32, IDx, &IDx)
+// PARAM_ADD(PARAM_UINT32, valueToExclude, &valueToExclude)
+// PARAM_GROUP_STOP(FFT)
