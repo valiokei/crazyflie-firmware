@@ -45,10 +45,16 @@ static bool isInit = false;
 // ADC flag to check if the conversion is done
 volatile uint8_t ADC_Done = 0;
 
-// Debug variables
+// -------  Debug variables -------
+// ADC
 volatile uint16_t firstValue = 0;
 volatile uint16_t FirstVolt = 0;
-volatile float32_t logNeroAmpl = 0;
+
+// Distances
+volatile float32_t Nero_distance = 0;
+volatile float32_t Giallo_distance = 0;
+volatile float32_t Grigio_distance = 0;
+volatile float32_t Rosso_distance = 0;
 
 // FFT parameters
 #define FFT_SIZE ARRAY_SIZE
@@ -61,28 +67,28 @@ uint32_t fft_length = FFT_SIZE;
 
 // ------ Anchors Parameters -------
 // Resonance Freqs Anchors in Hz
-#define NeroResFreq 213e3
+uint16_t NeroResFreq = 213e3;
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
 int Nero_Position[] = {0, 0, 0};
 #define Nero_Id 0
 
-#define GialloResFreq 203e3
+uint16_t GialloResFreq = 203e3;
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
 int Giallo_Position[] = {1.99, 0.0, 0};
 #define Giallo_Id 1
 
-#define GrigioResFreq 193e3
+uint16_t GrigioResFreq = 193e3;
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
 int Grigio_Position[] = {1.98, 1.97, 0};
 #define Grigio_Id 2
 
-#define RossoResFreq 183e3
+uint16_t RossoResFreq = 183e3;
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
@@ -134,10 +140,10 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     // DEBUG_PRINT("NeroAmpl: %f\n", NeroAmpl);
 
     // compute the the distances from the amplitude of each anchor
-    float32_t Nero_distance = pow(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
-    float32_t Giallo_distance = pow(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
-    float32_t Grigio_distance = pow(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
-    float32_t Rosso_distance = pow(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
+    Nero_distance = pow(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
+    Giallo_distance = pow(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
+    Grigio_distance = pow(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
+    Rosso_distance = pow(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
 
     // if ((options->combinedAnchorPositionOk || options->anchorPosition[current_anchor].timestamp) &&
     //     (diff < (OUTLIER_TH * stddev)))
@@ -284,14 +290,24 @@ static const DeckDriver magneticDriver = {
 };
 
 DECK_DRIVER(magneticDriver);
-#define CONFIG_DEBUG_LOG_ENABLE = y
-LOG_GROUP_START(example)
-LOG_ADD_DEBUG(LOG_UINT16, firstValue, &firstValue)
-LOG_ADD_DEBUG(LOG_UINT16, FirstVolt, &FirstVolt)
-LOG_ADD_DEBUG(LOG_FLOAT, logNeroAmpl, &logNeroAmpl)
-LOG_GROUP_STOP(example)
 
-// PARAM_GROUP_START(FFT)
-// PARAM_ADD(PARAM_UINT32, IDx, &IDx)
-// PARAM_ADD(PARAM_UINT32, valueToExclude, &valueToExclude)
-// PARAM_GROUP_STOP(FFT)
+#define CONFIG_DEBUG_LOG_ENABLE = y
+
+// LOG_GROUP_START(ADC)
+// LOG_ADD_DEBUG(LOG_UINT16, firstValue, &firstValue)
+// LOG_ADD_DEBUG(LOG_UINT16, FirstVolt, &FirstVolt)
+// LOG_GROUP_STOP(ADC)
+
+LOG_GROUP_START(MAGNETIC_DISTANCES)
+LOG_ADD_CORE(LOG_FLOAT, Nero, &Nero_distance)
+LOG_ADD_CORE(LOG_FLOAT, Giallo, &Giallo_distance)
+LOG_ADD_CORE(LOG_FLOAT, Grigio, &Grigio_distance)
+LOG_ADD_CORE(LOG_FLOAT, Rosso, &Rosso_distance)
+LOG_GROUP_STOP(MAGNETIC_DISTANCES)
+
+// PARAM_GROUP_START(MAGNETIC_DISTANCES)
+// PARAM_ADD(PARAM_UINT16, NeroResFreq, &NeroResFreq)
+// PARAM_ADD(PARAM_UINT16, GialloResFreq, &GialloResFreq)
+// PARAM_ADD(PARAM_UINT16, GrigioResFreq, &GrigioResFreq)
+// PARAM_ADD(PARAM_UINT16, RossoResFreq, &RossoResFreq)
+// PARAM_GROUP_STOP(MAGNETIC_DISTANCES)
