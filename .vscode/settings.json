@@ -45,6 +45,12 @@
         "flattopwinfrompython.h": "c",
         "stm32f4xx_rcc.h": "c",
         "*.old": "c",
-        "arm_const_structs.h": "c"
+        "arm_const_structs.h": "c",
+        "mm_distance.h": "c",
+        "math.h": "c",
+        "functional": "c",
+        "type_traits": "c",
+        "variant": "c",
+        "*.tcc": "c"
     }
 }

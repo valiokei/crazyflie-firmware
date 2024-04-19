@@ -19,7 +19,6 @@
 #define DEFAULT_ESTIMATOR StateEstimatorTypeComplementary
 static StateEstimatorType currentEstimator = StateEstimatorTypeAutoSelect;
 
-
 #define MEASUREMENTS_QUEUE_SIZE (20)
 static xQueueHandle measurementsQueue;
 STATIC_MEM_QUEUE_ALLOC(measurementsQueue, MEASUREMENTS_QUEUE_SIZE, sizeof(measurement_t));
@@ -46,15 +45,16 @@ EVENTTRIGGER(estBarometer)
 static void initEstimator(const StateEstimatorType estimator);
 static void deinitEstimator(const StateEstimatorType estimator);
 
-typedef struct {
+typedef struct
+{
   void (*init)(void);
   void (*deinit)(void);
   bool (*test)(void);
   void (*update)(state_t *state, const stabilizerStep_t stabilizerStep);
-  const char* name;
+  const char *name;
 } EstimatorFcns;
 
-#define NOT_IMPLEMENTED ((void*)0)
+#define NOT_IMPLEMENTED ((void *)0)
 
 static EstimatorFcns estimatorFunctions[] = {
     {
@@ -82,12 +82,12 @@ static EstimatorFcns estimatorFunctions[] = {
 #endif
 #ifdef CONFIG_ESTIMATOR_UKF_ENABLE
     {
-	    .init = errorEstimatorUkfInit,
-	    .deinit = NOT_IMPLEMENTED,
-	    .test = errorEstimatorUkfTest,
-	    .update = errorEstimatorUkf,
-	    .name = "Error State UKF",
-	},
+        .init = errorEstimatorUkfInit,
+        .deinit = NOT_IMPLEMENTED,
+        .test = errorEstimatorUkfTest,
+        .update = errorEstimatorUkf,
+        .name = "Error State UKF",
+    },
 #endif
 #ifdef CONFIG_ESTIMATOR_OOT
     {
@@ -100,34 +100,39 @@ static EstimatorFcns estimatorFunctions[] = {
 #endif
 };
 
-void stateEstimatorInit(StateEstimatorType estimator) {
+void stateEstimatorInit(StateEstimatorType estimator)
+{
   measurementsQueue = STATIC_MEM_QUEUE_CREATE(measurementsQueue);
   stateEstimatorSwitchTo(estimator);
 }
 
-void stateEstimatorSwitchTo(StateEstimatorType estimator) {
-  if (estimator < 0 || estimator >= StateEstimatorType_COUNT) {
+void stateEstimatorSwitchTo(StateEstimatorType estimator)
+{
+  if (estimator < 0 || estimator >= StateEstimatorType_COUNT)
+  {
     return;
   }
 
   StateEstimatorType newEstimator = estimator;
 
-  if (StateEstimatorTypeAutoSelect == newEstimator) {
+  if (StateEstimatorTypeAutoSelect == newEstimator)
+  {
     newEstimator = DEFAULT_ESTIMATOR;
   }
 
-  #if defined(CONFIG_ESTIMATOR_KALMAN)
-    #define ESTIMATOR StateEstimatorTypeKalman
-  #elif defined(CONFIG_UKF_KALMAN)
-    #define ESTIMATOR StateEstimatorTypeUkf
-  #elif defined(CONFIG_ESTIMATOR_COMPLEMENTARY)
-    #define ESTIMATOR StateEstimatorTypeComplementary
-  #else
-    #define ESTIMATOR StateEstimatorTypeAutoSelect
-  #endif
+#if defined(CONFIG_ESTIMATOR_KALMAN)
+#define ESTIMATOR StateEstimatorTypeKalman
+#elif defined(CONFIG_UKF_KALMAN)
+#define ESTIMATOR StateEstimatorTypeUkf
+#elif defined(CONFIG_ESTIMATOR_COMPLEMENTARY)
+#define ESTIMATOR StateEstimatorTypeComplementary
+#else
+#define ESTIMATOR StateEstimatorTypeAutoSelect
+#endif
 
   StateEstimatorType forcedEstimator = ESTIMATOR;
-  if (forcedEstimator != StateEstimatorTypeAutoSelect) {
+  if (forcedEstimator != StateEstimatorTypeAutoSelect)
+  {
     DEBUG_PRINT("Estimator type forced\n");
     newEstimator = forcedEstimator;
   }
@@ -140,126 +145,144 @@ void stateEstimatorSwitchTo(StateEstimatorType estimator) {
   DEBUG_PRINT("Using %s (%d) estimator\n", stateEstimatorGetName(), currentEstimator);
 }
 
-StateEstimatorType stateEstimatorGetType(void) {
+StateEstimatorType stateEstimatorGetType(void)
+{
   return currentEstimator;
 }
 
-static void initEstimator(const StateEstimatorType estimator) {
-  if (estimatorFunctions[estimator].init) {
+static void initEstimator(const StateEstimatorType estimator)
+{
+  if (estimatorFunctions[estimator].init)
+  {
     estimatorFunctions[estimator].init();
   }
 }
 
-static void deinitEstimator(const StateEstimatorType estimator) {
-  if (estimatorFunctions[estimator].deinit) {
+static void deinitEstimator(const StateEstimatorType estimator)
+{
+  if (estimatorFunctions[estimator].deinit)
+  {
     estimatorFunctions[estimator].deinit();
   }
 }
 
-bool stateEstimatorTest(void) {
+bool stateEstimatorTest(void)
+{
   return estimatorFunctions[currentEstimator].test();
 }
 
-void stateEstimator(state_t *state, const stabilizerStep_t tick) {
+void stateEstimator(state_t *state, const stabilizerStep_t tick)
+{
   estimatorFunctions[currentEstimator].update(state, tick);
 }
 
-const char* stateEstimatorGetName() {
+const char *stateEstimatorGetName()
+{
   return estimatorFunctions[currentEstimator].name;
 }
 
-
-void estimatorEnqueue(const measurement_t *measurement) {
-  if (!measurementsQueue) {
+void estimatorEnqueue(const measurement_t *measurement)
+{
+  if (!measurementsQueue)
+  {
     return;
   }
 
   portBASE_TYPE result;
   bool isInInterrupt = (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
-  if (isInInterrupt) {
+  if (isInInterrupt)
+  {
     portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
     result = xQueueSendFromISR(measurementsQueue, measurement, &xHigherPriorityTaskWoken);
-    if (xHigherPriorityTaskWoken == pdTRUE) {
+    if (xHigherPriorityTaskWoken == pdTRUE)
+    {
       portYIELD();
     }
-  } else {
+  }
+  else
+  {
     result = xQueueSend(measurementsQueue, measurement, 0);
   }
 
-  if (result == pdTRUE) {
+  if (result == pdTRUE)
+  {
     STATS_CNT_RATE_EVENT(&measurementAppendedCounter);
-  } else {
+  }
+  else
+  {
     STATS_CNT_RATE_EVENT(&measurementNotAppendedCounter);
   }
 
   // events
-  switch (measurement->type) {
-    case MeasurementTypeTDOA:
-      eventTrigger_estTDOA_payload.idA = measurement->data.tdoa.anchorIds[0];
-      eventTrigger_estTDOA_payload.idB = measurement->data.tdoa.anchorIds[1];
-      eventTrigger_estTDOA_payload.distanceDiff = measurement->data.tdoa.distanceDiff;
-      eventTrigger(&eventTrigger_estTDOA);
-      break;
-    case MeasurementTypePosition:
-      // for additional data, see locSrv.{x,y,z} and lighthouse.{x,y,z}
-      eventTrigger_estPosition_payload.source = measurement->data.position.source;
-      eventTrigger(&eventTrigger_estPosition);
-      break;
-    case MeasurementTypePose:
-      // no payload needed, see locSrv.{x,y,z,qx,qy,qz,qw}
-      eventTrigger(&eventTrigger_estPose);
-      break;
-    case MeasurementTypeDistance:
-      eventTrigger_estDistance_payload.id = measurement->data.distance.anchorId;
-      eventTrigger_estDistance_payload.distance = measurement->data.distance.distance;
-      eventTrigger(&eventTrigger_estDistance);
-      break;
-    case MeasurementTypeTOF:
-      // no payload needed, see range.zrange
-      eventTrigger(&eventTrigger_estTOF);
-      break;
-    case MeasurementTypeAbsoluteHeight:
-      // no payload needed, see CONFIG_DECK_LOCO_2D_POSITION
-      eventTrigger(&eventTrigger_estAbsoluteHeight);
-      break;
-    case MeasurementTypeFlow:
-      // no payload needed, see motion.{deltaX,deltaY}
-      eventTrigger(&eventTrigger_estFlow);
-      break;
-    case MeasurementTypeYawError:
-      eventTrigger_estYawError_payload.yawError = measurement->data.yawError.yawError;
-      eventTrigger(&eventTrigger_estYawError);
-      break;
-    case MeasurementTypeSweepAngle:
-      eventTrigger_estSweepAngle_payload.sensorId = measurement->data.sweepAngle.sensorId;
-      eventTrigger_estSweepAngle_payload.baseStationId = measurement->data.sweepAngle.baseStationId;
-      eventTrigger_estSweepAngle_payload.sweepId = measurement->data.sweepAngle.sweepId;
-      eventTrigger_estSweepAngle_payload.t = measurement->data.sweepAngle.t;
-      eventTrigger_estSweepAngle_payload.sweepAngle = measurement->data.sweepAngle.measuredSweepAngle;
-      eventTrigger(&eventTrigger_estSweepAngle);
-      break;
-    case MeasurementTypeGyroscope:
-      // no payload needed, see gyro.{x,y,z}
-      eventTrigger(&eventTrigger_estGyroscope);
-      break;
-    case MeasurementTypeAcceleration:
-      // no payload needed, see acc.{x,y,z}
-      eventTrigger(&eventTrigger_estAcceleration);
-      break;
-    case MeasurementTypeBarometer:
-      // no payload needed, see baro.asl
-      eventTrigger(&eventTrigger_estBarometer);
-      break;
-    default:
-      break;
+  switch (measurement->type)
+  {
+  case MeasurementTypeTDOA:
+    eventTrigger_estTDOA_payload.idA = measurement->data.tdoa.anchorIds[0];
+    eventTrigger_estTDOA_payload.idB = measurement->data.tdoa.anchorIds[1];
+    eventTrigger_estTDOA_payload.distanceDiff = measurement->data.tdoa.distanceDiff;
+    eventTrigger(&eventTrigger_estTDOA);
+    break;
+  case MeasurementTypePosition:
+    // for additional data, see locSrv.{x,y,z} and lighthouse.{x,y,z}
+    eventTrigger_estPosition_payload.source = measurement->data.position.source;
+    eventTrigger(&eventTrigger_estPosition);
+    break;
+  case MeasurementTypePose:
+    // no payload needed, see locSrv.{x,y,z,qx,qy,qz,qw}
+    eventTrigger(&eventTrigger_estPose);
+    break;
+  case MeasurementTypeDistance:
+    eventTrigger_estDistance_payload.id = measurement->data.distance.anchorId;
+    eventTrigger_estDistance_payload.distance = measurement->data.distance.distance;
+    eventTrigger(&eventTrigger_estDistance);
+    break;
+  case MeasurementTypeTOF:
+    // no payload needed, see range.zrange
+    eventTrigger(&eventTrigger_estTOF);
+    break;
+  case MeasurementTypeAbsoluteHeight:
+    // no payload needed, see CONFIG_DECK_LOCO_2D_POSITION
+    eventTrigger(&eventTrigger_estAbsoluteHeight);
+    break;
+  case MeasurementTypeFlow:
+    // no payload needed, see motion.{deltaX,deltaY}
+    eventTrigger(&eventTrigger_estFlow);
+    break;
+  case MeasurementTypeYawError:
+    eventTrigger_estYawError_payload.yawError = measurement->data.yawError.yawError;
+    eventTrigger(&eventTrigger_estYawError);
+    break;
+  case MeasurementTypeSweepAngle:
+    eventTrigger_estSweepAngle_payload.sensorId = measurement->data.sweepAngle.sensorId;
+    eventTrigger_estSweepAngle_payload.baseStationId = measurement->data.sweepAngle.baseStationId;
+    eventTrigger_estSweepAngle_payload.sweepId = measurement->data.sweepAngle.sweepId;
+    eventTrigger_estSweepAngle_payload.t = measurement->data.sweepAngle.t;
+    eventTrigger_estSweepAngle_payload.sweepAngle = measurement->data.sweepAngle.measuredSweepAngle;
+    eventTrigger(&eventTrigger_estSweepAngle);
+    break;
+  case MeasurementTypeGyroscope:
+    // no payload needed, see gyro.{x,y,z}
+    eventTrigger(&eventTrigger_estGyroscope);
+    break;
+  case MeasurementTypeAcceleration:
+    // no payload needed, see acc.{x,y,z}
+    eventTrigger(&eventTrigger_estAcceleration);
+    break;
+  case MeasurementTypeBarometer:
+    // no payload needed, see baro.asl
+    eventTrigger(&eventTrigger_estBarometer);
+    break;
+  default:
+    break;
   }
 }
 
-bool estimatorDequeue(measurement_t *measurement) {
+bool estimatorDequeue(measurement_t *measurement)
+{
   return pdTRUE == xQueueReceive(measurementsQueue, measurement, 0);
 }
 
 LOG_GROUP_START(estimator)
-  STATS_CNT_RATE_LOG_ADD(rtApnd, &measurementAppendedCounter)
-  STATS_CNT_RATE_LOG_ADD(rtRej, &measurementNotAppendedCounter)
+STATS_CNT_RATE_LOG_ADD(rtApnd, &measurementAppendedCounter)
+STATS_CNT_RATE_LOG_ADD(rtRej, &measurementNotAppendedCounter)
 LOG_GROUP_STOP(estimator)

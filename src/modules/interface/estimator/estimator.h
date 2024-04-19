@@ -28,7 +28,8 @@
 #include "autoconf.h"
 #include "stabilizer_types.h"
 
-typedef enum {
+typedef enum
+{
   StateEstimatorTypeAutoSelect = 0,
   StateEstimatorTypeComplementary,
 #ifdef CONFIG_ESTIMATOR_KALMAN_ENABLE
@@ -43,7 +44,8 @@ typedef enum {
   StateEstimatorType_COUNT,
 } StateEstimatorType;
 
-typedef enum {
+typedef enum
+{
   MeasurementTypeTDOA,
   MeasurementTypePosition,
   MeasurementTypePose,
@@ -56,6 +58,7 @@ typedef enum {
   MeasurementTypeGyroscope,
   MeasurementTypeAcceleration,
   MeasurementTypeBarometer,
+  MeasurementTypeVolt,
 } MeasurementType;
 
 typedef struct
@@ -75,6 +78,7 @@ typedef struct
     gyroscopeMeasurement_t gyroscope;
     accelerationMeasurement_t acceleration;
     barometerMeasurement_t barometer;
+    voltMeasurement_t volt;
   } data;
 } measurement_t;
 
@@ -83,7 +87,7 @@ bool stateEstimatorTest(void);
 void stateEstimatorSwitchTo(StateEstimatorType estimator);
 void stateEstimator(state_t *state, const stabilizerStep_t stabilizerStep);
 StateEstimatorType stateEstimatorGetType(void);
-const char* stateEstimatorGetName();
+const char *stateEstimatorGetName();
 
 // Support to incorporate additional sensors into the state estimate via the following functions
 void estimatorEnqueue(const measurement_t *measurement);
@@ -118,6 +122,14 @@ static inline void estimatorEnqueueDistance(const distanceMeasurement_t *distanc
   measurement_t m;
   m.type = MeasurementTypeDistance;
   m.data.distance = *distance;
+  estimatorEnqueue(&m);
+}
+
+static inline void estimatorEnqueueVolt(const voltMeasurement_t *volt)
+{
+  measurement_t m;
+  m.type = MeasurementTypeVolt;
+  m.data.volt = *volt;
   estimatorEnqueue(&m);
 }
 
