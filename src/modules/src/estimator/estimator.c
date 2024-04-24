@@ -15,6 +15,7 @@
 #include "statsCnt.h"
 #include "eventtrigger.h"
 #include "quatcompress.h"
+#include "debug.h"
 
 #define DEFAULT_ESTIMATOR StateEstimatorTypeComplementary
 static StateEstimatorType currentEstimator = StateEstimatorTypeAutoSelect;
@@ -33,6 +34,7 @@ EVENTTRIGGER(estTDOA, uint8, idA, uint8, idB, float, distanceDiff)
 EVENTTRIGGER(estPosition, uint8, source)
 EVENTTRIGGER(estPose)
 EVENTTRIGGER(estDistance, uint8, id, float, distance)
+EVENTTRIGGER(estVolt)
 EVENTTRIGGER(estTOF)
 EVENTTRIGGER(estAbsoluteHeight)
 EVENTTRIGGER(estFlow)
@@ -235,6 +237,9 @@ void estimatorEnqueue(const measurement_t *measurement)
     eventTrigger_estDistance_payload.id = measurement->data.distance.anchorId;
     eventTrigger_estDistance_payload.distance = measurement->data.distance.distance;
     eventTrigger(&eventTrigger_estDistance);
+    break;
+  case MeasurementTypeVolt:
+    eventTrigger(&eventTrigger_estVolt);
     break;
   case MeasurementTypeTOF:
     // no payload needed, see range.zrange

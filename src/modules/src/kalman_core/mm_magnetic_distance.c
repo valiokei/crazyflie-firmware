@@ -548,8 +548,8 @@ float V_from_B(float *B_field, float *rx_versor, int resonanceFreq)
     return V;
 }
 
-float V_model(kalmanCoreData_t *this,
-              voltMeasurement_t *voltAnchor)
+float kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
+                               voltMeasurement_t *voltAnchor)
 {
 
     start_timer();     // start the timer.
@@ -649,7 +649,6 @@ float V_model(kalmanCoreData_t *this,
     h_4[KC_STATE_X] = V_rx_derivative_x[4];
     h_4[KC_STATE_Y] = V_rx_derivative_y[4];
     h_4[KC_STATE_Z] = V_rx_derivative_z[4];
-    it2 = 5;
     kalmanCoreScalarUpdate(this, &H_1, voltAnchor->measuredVolt[0] - V_rx_1, voltAnchor->stdDev[0]);
     kalmanCoreScalarUpdate(this, &H_2, voltAnchor->measuredVolt[1] - V_rx_2, voltAnchor->stdDev[1]);
     kalmanCoreScalarUpdate(this, &H_3, voltAnchor->measuredVolt[2] - V_rx_3, voltAnchor->stdDev[2]);

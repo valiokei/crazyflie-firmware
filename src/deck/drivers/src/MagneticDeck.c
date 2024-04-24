@@ -67,21 +67,21 @@ int Nero_Position[] = {0, 0, 0};
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-int Giallo_Position[] = {0.72, 0.55, 0};
+int Giallo_Position[] = {0.0, 0.36, 0};
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-int Grigio_Position[] = {0.72, 0.0, 0};
+int Grigio_Position[] = {0.675, 0.36, 0};
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-int Rosso_Position[] = {0.0, 0.55, 0};
+int Rosso_Position[] = {0.675, 0.00, 0};
 #define Rosso_Id 3
 
 #define MagneticStandardDeviation 0.10
@@ -90,6 +90,11 @@ int Rosso_Position[] = {0.0, 0.55, 0};
 // ADC
 volatile uint16_t firstValue = 0;
 volatile uint16_t FirstVolt = 0;
+
+volatile float32_t NeroAmpl = 0;
+volatile float32_t GialloAmpl = 0;
+volatile float32_t GrigioAmpl = 0;
+volatile float32_t RossoAmpl = 0;
 
 // Distances
 volatile float32_t Nero_distance = 0;
@@ -148,55 +153,52 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
 
     // --------------------------------- 2D MEASURMENT MODEL - DISTANCE COMPUTATION ---------------------------------
 
-    /*
+    // compute the the distances from the amplitude of each anchor
+    Nero_distance = pow(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
+    Giallo_distance = pow(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
+    Grigio_distance = pow(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
+    Rosso_distance = pow(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
 
-        // compute the the distances from the amplitude of each anchor
-        Nero_distance = pow(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
-        Giallo_distance = pow(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
-        Grigio_distance = pow(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
-        Rosso_distance = pow(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
+    // Nero
+    distanceMeasurement_t dist_Nero;
+    dist_Nero.distance = Nero_distance;
+    dist_Nero.x = Nero_Position[0];
+    dist_Nero.y = Nero_Position[1];
+    dist_Nero.z = Nero_Position[2];
+    dist_Nero.anchorId = Nero_Id;
+    dist_Nero.stdDev = MagneticStandardDeviation;
+    // DEBUG_PRINT("Nero Distance: %f\n", Nero_distance);
+    // estimatorEnqueueDistance(&dist_Nero);
 
-        // Nero
-        distanceMeasurement_t dist_Nero;
-        dist_Nero.distance = Nero_distance;
-        dist_Nero.x = Nero_Position[0];
-        dist_Nero.y = Nero_Position[1];
-        dist_Nero.z = Nero_Position[2];
-        dist_Nero.anchorId = Nero_Id;
-        dist_Nero.stdDev = MagneticStandardDeviation;
-        // DEBUG_PRINT("Nero Distance: %f\n", Nero_distance);
-        estimatorEnqueueDistance(&dist_Nero);
+    // // Giallo
+    distanceMeasurement_t dist_Giallo;
+    dist_Giallo.distance = Giallo_distance;
+    dist_Giallo.x = Giallo_Position[0];
+    dist_Giallo.y = Giallo_Position[1];
+    dist_Giallo.z = Giallo_Position[2];
+    dist_Giallo.anchorId = Giallo_Id;
+    dist_Giallo.stdDev = MagneticStandardDeviation;
+    // estimatorEnqueueDistance(&dist_Giallo);
 
-        // // Giallo
-        distanceMeasurement_t dist_Giallo;
-        dist_Giallo.distance = Giallo_distance;
-        dist_Giallo.x = Giallo_Position[0];
-        dist_Giallo.y = Giallo_Position[1];
-        dist_Giallo.z = Giallo_Position[2];
-        dist_Giallo.anchorId = Giallo_Id;
-        dist_Giallo.stdDev = MagneticStandardDeviation;
-        estimatorEnqueueDistance(&dist_Giallo);
+    // // Grigio
+    distanceMeasurement_t dist_Grigio;
+    dist_Grigio.distance = Grigio_distance;
+    dist_Grigio.x = Grigio_Position[0];
+    dist_Grigio.y = Grigio_Position[1];
+    dist_Grigio.z = Grigio_Position[2];
+    dist_Grigio.anchorId = Grigio_Id;
+    dist_Grigio.stdDev = MagneticStandardDeviation;
+    // estimatorEnqueueDistance(&dist_Grigio);
 
-        // // Grigio
-        distanceMeasurement_t dist_Grigio;
-        dist_Grigio.distance = Grigio_distance;
-        dist_Grigio.x = Grigio_Position[0];
-        dist_Grigio.y = Grigio_Position[1];
-        dist_Grigio.z = Grigio_Position[2];
-        dist_Grigio.anchorId = Grigio_Id;
-        dist_Grigio.stdDev = MagneticStandardDeviation;
-        estimatorEnqueueDistance(&dist_Grigio);
-
-        // // Rosso
-        distanceMeasurement_t dist_Rosso;
-        dist_Rosso.distance = Rosso_distance;
-        dist_Rosso.x = Rosso_Position[0];
-        dist_Rosso.y = Rosso_Position[1];
-        dist_Rosso.z = Rosso_Position[2];
-        dist_Rosso.anchorId = Rosso_Id;
-        dist_Rosso.stdDev = MagneticStandardDeviation;
-        estimatorEnqueueDistance(&dist_Rosso);
-    */
+    // // Rosso
+    distanceMeasurement_t dist_Rosso;
+    dist_Rosso.distance = Rosso_distance;
+    dist_Rosso.x = Rosso_Position[0];
+    dist_Rosso.y = Rosso_Position[1];
+    dist_Rosso.z = Rosso_Position[2];
+    dist_Rosso.anchorId = Rosso_Id;
+    dist_Rosso.stdDev = MagneticStandardDeviation;
+    // estimatorEnqueueDistance(&dist_Rosso);
 
     // ---------------3D MEASUREMENT MODEL - POSITION COMPUTATION------------------------------
 
@@ -337,12 +339,18 @@ DECK_DRIVER(magneticDriver);
 // LOG_ADD_DEBUG(LOG_UINT16, FirstVolt, &FirstVolt)
 // LOG_GROUP_STOP(ADC)
 
-// LOG_GROUP_START(MAGNETIC_DISTANCES)
-// LOG_ADD_CORE(LOG_FLOAT, Nero, &Nero_distance)
-// LOG_ADD_CORE(LOG_FLOAT, Giallo, &Giallo_distance)
-// LOG_ADD_CORE(LOG_FLOAT, Grigio, &Grigio_distance)
-// LOG_ADD_CORE(LOG_FLOAT, Rosso, &Rosso_distance)
-// LOG_GROUP_STOP(MAGNETIC_DISTANCES)
+LOG_GROUP_START(MAGNETIC_DISTANCES)
+LOG_ADD_CORE(LOG_FLOAT, Nero, &Nero_distance)
+LOG_ADD_CORE(LOG_FLOAT, Giallo, &Giallo_distance)
+LOG_ADD_CORE(LOG_FLOAT, Grigio, &Grigio_distance)
+LOG_ADD_CORE(LOG_FLOAT, Rosso, &Rosso_distance)
+
+LOG_ADD_CORE(LOG_FLOAT, NeroV, &NeroAmpl)
+LOG_ADD_CORE(LOG_FLOAT, GialloV, &GialloAmpl)
+LOG_ADD_CORE(LOG_FLOAT, GrigioV, &GrigioAmpl)
+LOG_ADD_CORE(LOG_FLOAT, RossoV, &RossoAmpl)
+
+LOG_GROUP_STOP(MAGNETIC_DISTANCES)
 
 // PARAM_GROUP_START(FFT_Param)
 // // PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)

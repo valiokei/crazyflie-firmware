@@ -51,6 +51,7 @@
         "functional": "c",
         "type_traits": "c",
         "variant": "c",
-        "*.tcc": "c"
+        "*.tcc": "c",
+        "kalman_core.h": "c"
     }
 }
