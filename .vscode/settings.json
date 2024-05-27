@@ -52,6 +52,9 @@
         "type_traits": "c",
         "variant": "c",
         "*.tcc": "c",
-        "kalman_core.h": "c"
+        "kalman_core.h": "c",
+        "mm_flow.h": "c",
+        "mm_magnetic_distance.h": "c",
+        "log.h": "c"
     }
 }

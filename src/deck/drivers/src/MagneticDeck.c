@@ -60,32 +60,32 @@ uint32_t fft_length = FFT_SIZE;
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-int Nero_Position[] = {0, 0, 0};
+float Nero_Position[] = {+0.25, +0.35, 0};
 #define Nero_Id 0
 
 #define GialloResFreq 203e3
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-int Giallo_Position[] = {0.0, 0.36, 0};
+float Giallo_Position[] = {+0.25, -0.35, 0};
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-int Grigio_Position[] = {0.675, 0.36, 0};
+float Grigio_Position[] = {-0.25, +0.35, 0};
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-int Rosso_Position[] = {0.675, 0.00, 0};
+float Rosso_Position[] = {-0.25, -0.35, 0};
 #define Rosso_Id 3
 
-#define MagneticStandardDeviation 0.10
-
+#define Default_MagneticStandardDeviation 0.0001
+volatile float32_t MagneticStandardDeviation = Default_MagneticStandardDeviation;
 // -------  Debug variables -------
 // ADC
 volatile uint16_t firstValue = 0;
@@ -106,13 +106,13 @@ volatile float32_t Rosso_distance = 0;
 volatile uint16_t bin_size = BIN_SIZE;
 volatile uint16_t Fc = Fc_ADC;
 volatile uint16_t fft_size = FFT_SIZE;
-volatile uint16_t Nero_IDX = NeroIdx; // Assign the constant value directly to the variable
+volatile uint16_t Nero_Idx = NeroIdx; // Assign the constant value directly to the variable
 volatile uint16_t Giallo_Idx = GialloIdx;
 volatile uint16_t Grigio_Idx = GrigioIdx;
 volatile uint16_t Rosso_Idx = RossoIdx;
 
 // funzione che fa l'fft e prende in input il puntatore ad un buffer di float
-void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer)
+void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor)
 {
     // DEBUG_PRINT("performFFT started!\n");
     // perform FFT on first half of buffer
@@ -143,13 +143,31 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     // calcolo le ampiezze della fft
     arm_cmplx_mag_f32(fft_output, fft_magnitude, FFT_SIZE / 2);
 
-    // arm_max_f32(&fft_magnitude[valueToExclude], (FFT_SIZE / 2) - valueToExclude, &maxval, &maxindex);
-    // IDx = maxindex + valueToExclude;
+    // Calculate the maximum value and its index around NeroIdx
+    float32_t maxval;
+    uint32_t maxindex;
+    arm_max_f32(&fft_magnitude[NeroIdx - 1], 3, &maxval, &maxindex);
+    maxindex += NeroIdx - 1;
 
-    float32_t NeroAmpl = fft_magnitude[Nero_IDX];
-    float32_t GialloAmpl = fft_magnitude[GialloIdx];
-    float32_t GrigioAmpl = fft_magnitude[GrigioIdx];
-    float32_t RossoAmpl = fft_magnitude[RossoIdx];
+    NeroAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+
+    // Calculate the maximum value and its index around GialloIdx
+    arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &maxval, &maxindex);
+    maxindex += GialloIdx - 1;
+
+    GialloAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+
+    // Calculate the maximum value and its index around GrigioIdx
+    arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &maxval, &maxindex);
+    maxindex += GrigioIdx - 1;
+
+    GrigioAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+
+    // Calculate the maximum value and its index around RossoIdx
+    arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &maxval, &maxindex);
+    maxindex += RossoIdx - 1;
+
+    RossoAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // --------------------------------- 2D MEASURMENT MODEL - DISTANCE COMPUTATION ---------------------------------
 
@@ -257,13 +275,22 @@ static void mytask(void *param)
 
     arm_rfft_fast_init_f32(&fft_instance, fft_length);
     // DEBUG_PRINT("FFT initialized\n");
+
+    // Flattop correction factor calculation
+    float32_t sum = 0.0;
+    for (int i = 0; i < ARRAY_SIZE; i++)
+    {
+        sum += flattop_2048_lut[i];
+    }
+    float32_t flattopCorrectionFactor = ARRAY_SIZE / sum;
+
     while (1)
     {
         // DEBUG_PRINT("While\n");
         if (ADC_Done == 1)
         {
 
-            performFFT(DMA_Buffer, fft_input);
+            performFFT(DMA_Buffer, fft_input, flattopCorrectionFactor);
             firstValue = DMA_Buffer[1000];
             FirstVolt = firstValue * ADC_MAX_VOLTAGE / ADC_LEVELS;
 
@@ -279,7 +306,7 @@ static void mytask(void *param)
             // DEBUG_PRINT("ADC_Done is 0\n");
         }
 
-        vTaskDelay(M2T(100));
+        vTaskDelay(M2T(10));
     }
 }
 
@@ -340,23 +367,25 @@ DECK_DRIVER(magneticDriver);
 // LOG_GROUP_STOP(ADC)
 
 LOG_GROUP_START(MAGNETIC_DISTANCES)
-LOG_ADD_CORE(LOG_FLOAT, Nero, &Nero_distance)
-LOG_ADD_CORE(LOG_FLOAT, Giallo, &Giallo_distance)
-LOG_ADD_CORE(LOG_FLOAT, Grigio, &Grigio_distance)
-LOG_ADD_CORE(LOG_FLOAT, Rosso, &Rosso_distance)
-
-LOG_ADD_CORE(LOG_FLOAT, NeroV, &NeroAmpl)
-LOG_ADD_CORE(LOG_FLOAT, GialloV, &GialloAmpl)
-LOG_ADD_CORE(LOG_FLOAT, GrigioV, &GrigioAmpl)
-LOG_ADD_CORE(LOG_FLOAT, RossoV, &RossoAmpl)
-
+LOG_ADD(LOG_FLOAT, Nero, &Nero_distance)
+LOG_ADD(LOG_FLOAT, Giallo, &Giallo_distance)
+LOG_ADD(LOG_FLOAT, Grigio, &Grigio_distance)
+LOG_ADD(LOG_FLOAT, Rosso, &Rosso_distance)
 LOG_GROUP_STOP(MAGNETIC_DISTANCES)
 
-// PARAM_GROUP_START(FFT_Param)
-// // PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
-// // volatile int Nero_IDX = NeroIdx;
+// LOG_GROUP_START(MAGNETIC_VOLTAGES)
+// LOG_ADD(LOG_FLOAT, Nero, &NeroAmpl)
+// LOG_ADD(LOG_FLOAT, Giallo, &GialloAmpl)
+// LOG_ADD(LOG_FLOAT, Grigio, &GrigioAmpl)
+// LOG_ADD(LOG_FLOAT, Rosso, &RossoAmpl)
+// LOG_GROUP_STOP(MAGNETIC_VOLTAGES)
+
+PARAM_GROUP_START(MAGNETIC_Params)
+// PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
+// volatile int Nero_IDX = NeroIdx;
+PARAM_ADD(PARAM_FLOAT, std_magn, &MagneticStandardDeviation)
 // PARAM_ADD_CORE(PARAM_UINT16, Nero_Index, &Nero_IDX)
 // PARAM_ADD_CORE(PARAM_UINT16, Giallo_Index, &Giallo_Idx)
 // PARAM_ADD_CORE(PARAM_UINT16, Grigio_Index, &Grigio_Idx)
 // PARAM_ADD_CORE(PARAM_UINT16, Rosso_Index, &Rosso_Idx)
-// PARAM_GROUP_STOP(FFT_Param)
+PARAM_GROUP_STOP(MAGNETIC_Params)
