@@ -60,28 +60,28 @@ uint32_t fft_length = FFT_SIZE;
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-float Nero_Position[] = {-0.5, +0.0, 0};
+float Nero_Position[] = {-0.5, -0.5, 0};
 #define Nero_Id 0
 
 #define GialloResFreq 203e3
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-float Giallo_Position[] = {-0.5, +0.0, 0};
+float Giallo_Position[] = {+0.5, -0.5, 0};
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-float Grigio_Position[] = {-0.5, +0.0, 0};
+float Grigio_Position[] = {+0.5, +0.5, 0};
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-float Rosso_Position[] = {-0.5, +0., 0};
+float Rosso_Position[] = {-0.5, +0.5, 0};
 #define Rosso_Id 3
 
 #define Default_MagneticStandardDeviation 0.001
@@ -306,7 +306,7 @@ static void mytask(void *param)
             // DEBUG_PRINT("ADC_Done is 0\n");
         }
 
-        vTaskDelay(M2T(100));
+        vTaskDelay(M2T(10));
     }
 }
 
@@ -380,12 +380,12 @@ LOG_GROUP_STOP(MAGNETIC_DISTANCES)
 // LOG_ADD(LOG_FLOAT, Rosso, &RossoAmpl)
 // LOG_GROUP_STOP(MAGNETIC_VOLTAGES)
 
-// PARAM_GROUP_START(MAGNETIC_Params)
-// // PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
-// // volatile int Nero_IDX = NeroIdx;
-// PARAM_ADD(PARAM_FLOAT, std_magn, &MagneticStandardDeviation)
-// // PARAM_ADD_CORE(PARAM_UINT16, Nero_Index, &Nero_IDX)
-// // PARAM_ADD_CORE(PARAM_UINT16, Giallo_Index, &Giallo_Idx)
-// // PARAM_ADD_CORE(PARAM_UINT16, Grigio_Index, &Grigio_Idx)
-// // PARAM_ADD_CORE(PARAM_UINT16, Rosso_Index, &Rosso_Idx)
-// PARAM_GROUP_STOP(MAGNETIC_Params)
+PARAM_GROUP_START(MAGNETIC_Params)
+// PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
+// volatile int Nero_IDX = NeroIdx;
+PARAM_ADD(PARAM_FLOAT, std_magn, &MagneticStandardDeviation)
+// PARAM_ADD_CORE(PARAM_UINT16, Nero_Index, &Nero_IDX)
+// PARAM_ADD_CORE(PARAM_UINT16, Giallo_Index, &Giallo_Idx)
+// PARAM_ADD_CORE(PARAM_UINT16, Grigio_Index, &Grigio_Idx)
+// PARAM_ADD_CORE(PARAM_UINT16, Rosso_Index, &Rosso_Idx)
+PARAM_GROUP_STOP(MAGNETIC_Params)
