@@ -66,9 +66,9 @@ uint32_t fft_length = FFT_SIZE;
 #define V_DD 3.3f
 
 // Potentiometer Params
-#define R10 200f                         // 200 Ohm
-#define TYPICAL_DC_WIPER_RESISTANCE 155f // 155 OHM
-#define POTENTIOMETER_ADDR 0x94          //
+#define R10 200.0f                         // 200 Ohm
+#define TYPICAL_DC_WIPER_RESISTANCE 15.05f // 155 OHM
+#define POTENTIOMETER_ADDR 0x94            //
 #define POTENTIOMETER_BIT 7
 // #define POTENTIOMETER_STEPS pow(2, POTENTIOMETER_BIT) // 7 bit --> 128
 #define POTENTIOMETER_NUMBER_OF_STEPS (1 << POTENTIOMETER_BIT) - 1 // 127
