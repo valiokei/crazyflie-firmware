@@ -18,7 +18,8 @@
 #define get_timer() *((volatile uint32_t *)0xE0001004)
 
 uint32_t it1, it2; // start and stop flag
-float32_t MeasuredVoltages[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float32_t MeasuredVoltages_calibrated[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float32_t MeasuredVoltages_raw[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 float32_t PredictedVoltages[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 float32_t Derivative_x[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 float32_t Derivative_y[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -835,10 +836,15 @@ float kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
             // // }
             // // ########################################### DEBUG
 
-            MeasuredVoltages[0] = voltAnchor->measuredVolt[0] / CG_a1;
-            MeasuredVoltages[1] = voltAnchor->measuredVolt[1] / CG_a2;
-            MeasuredVoltages[2] = voltAnchor->measuredVolt[2] / CG_a3;
-            MeasuredVoltages[3] = voltAnchor->measuredVolt[3] / CG_a4;
+            MeasuredVoltages_raw[0] = voltAnchor->measuredVolt[0];
+            MeasuredVoltages_raw[1] = voltAnchor->measuredVolt[1];
+            MeasuredVoltages_raw[2] = voltAnchor->measuredVolt[2];
+            MeasuredVoltages_raw[3] = voltAnchor->measuredVolt[3];
+
+            MeasuredVoltages_calibrated[0] = voltAnchor->measuredVolt[0] / CG_a1;
+            MeasuredVoltages_calibrated[1] = voltAnchor->measuredVolt[1] / CG_a2;
+            MeasuredVoltages_calibrated[2] = voltAnchor->measuredVolt[2] / CG_a3;
+            MeasuredVoltages_calibrated[3] = voltAnchor->measuredVolt[3] / CG_a4;
 
             get_B_field_for_a_Anchor(anchor_1_pose, tag_pos_predicted, tag_or_versor, B_field_vector_1);
             get_B_field_for_a_Anchor(anchor_2_pose, tag_pos_predicted, tag_or_versor, B_field_vector_2);
@@ -944,19 +950,19 @@ float kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
             h_4[KC_STATE_Y] = V_rx_derivative_y[4];
             h_4[KC_STATE_Z] = V_rx_derivative_z[4];
 
-            float error_anchor1 = MeasuredVoltages[0] - V_rx_1;
-            float error_anchor2 = MeasuredVoltages[1] - V_rx_2;
-            float error_anchor3 = MeasuredVoltages[2] - V_rx_3;
-            float error_anchor4 = MeasuredVoltages[3] - V_rx_4;
+            float error_anchor1 = MeasuredVoltages_calibrated[0] - V_rx_1;
+            float error_anchor2 = MeasuredVoltages_calibrated[1] - V_rx_2;
+            float error_anchor3 = MeasuredVoltages_calibrated[2] - V_rx_3;
+            float error_anchor4 = MeasuredVoltages_calibrated[3] - V_rx_4;
             E_1 = error_anchor1;
             E_2 = error_anchor2;
             E_3 = error_anchor3;
             E_4 = error_anchor4;
 
-            CalibrationRapport_anchor1 = MeasuredVoltages[0] / PredictedVoltages[0];
-            CalibrationRapport_anchor2 = MeasuredVoltages[1] / PredictedVoltages[1];
-            CalibrationRapport_anchor3 = MeasuredVoltages[2] / PredictedVoltages[2];
-            CalibrationRapport_anchor4 = MeasuredVoltages[3] / PredictedVoltages[3];
+            CalibrationRapport_anchor1 = MeasuredVoltages_calibrated[0] / PredictedVoltages[0];
+            CalibrationRapport_anchor2 = MeasuredVoltages_calibrated[1] / PredictedVoltages[1];
+            CalibrationRapport_anchor3 = MeasuredVoltages_calibrated[2] / PredictedVoltages[2];
+            CalibrationRapport_anchor4 = MeasuredVoltages_calibrated[3] / PredictedVoltages[3];
 
             // Potrebbe essere troppo piccolo l'errore. o le stime troppo diverse?!?!?!
             kalmanCoreScalarUpdate(this, &H_1, error_anchor1, voltAnchor->stdDev[0]);
@@ -990,10 +996,15 @@ LOG_ADD(LOG_FLOAT, Er_2, &E_2)
 LOG_ADD(LOG_FLOAT, Er_3, &E_3)
 LOG_ADD(LOG_FLOAT, Er_4, &E_4)
 
-LOG_ADD(LOG_FLOAT, M_V_0, &MeasuredVoltages[0])
-LOG_ADD(LOG_FLOAT, M_V_1, &MeasuredVoltages[1])
-LOG_ADD(LOG_FLOAT, M_V_2, &MeasuredVoltages[2])
-LOG_ADD(LOG_FLOAT, M_V_3, &MeasuredVoltages[3])
+LOG_ADD(LOG_FLOAT, MC_V_0, &MeasuredVoltages_calibrated[0])
+LOG_ADD(LOG_FLOAT, MC_V_1, &MeasuredVoltages_calibrated[1])
+LOG_ADD(LOG_FLOAT, MC_V_2, &MeasuredVoltages_calibrated[2])
+LOG_ADD(LOG_FLOAT, MC_V_3, &MeasuredVoltages_calibrated[3])
+
+LOG_ADD(LOG_FLOAT, MR_V_0, &MeasuredVoltages_raw[0])
+LOG_ADD(LOG_FLOAT, MR_V_1, &MeasuredVoltages_raw[1])
+LOG_ADD(LOG_FLOAT, MR_V_2, &MeasuredVoltages_raw[2])
+LOG_ADD(LOG_FLOAT, MR_V_3, &MeasuredVoltages_raw[3])
 
 LOG_ADD(LOG_FLOAT, P_V_0, &PredictedVoltages[0])
 LOG_ADD(LOG_FLOAT, P_V_1, &PredictedVoltages[1])
@@ -1022,9 +1033,6 @@ LOG_ADD(LOG_FLOAT, B_3_3, &B[3][3])
 
 LOG_GROUP_STOP(Dipole_Model)
 
-PARAM_GROUP_START(D_M_P)
-PARAM_ADD(PARAM_UINT16, ga1, &CG_a1)
-PARAM_ADD(PARAM_UINT16, ga2, &CG_a2)
-PARAM_ADD(PARAM_UINT16, ga3, &CG_a3)
-PARAM_ADD(PARAM_UINT16, ga4, &CG_a4)
-PARAM_GROUP_STOP(D_M_P)
+PARAM_GROUP_START(Dipole_Params)
+PARAM_ADD(PARAM_UINT16, calibTic, &currentCalibrationTick)
+PARAM_GROUP_STOP(Dipole_Params)
