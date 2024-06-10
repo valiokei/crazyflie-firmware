@@ -18,6 +18,7 @@
 #include "task.h"
 #include "log.h"
 #include "param.h"
+#include "i2cdev.h"
 
 #define CONFIG_DEBUG = y
 
@@ -53,6 +54,26 @@ float32_t fft_magnitude[FFT_SIZE / 2];
 arm_rfft_fast_instance_f32 fft_instance;
 uint32_t fft_length = FFT_SIZE;
 #define BIN_SIZE (Fc_ADC / FFT_SIZE)
+
+// DAC Reference Voltage Params
+#define V_REF_CRAZYFLIE 3.0f
+#define DAC_BIT 12
+#define DAC_LEVELS (1 << DAC_BIT) // 4096
+#define DAC_STEP (VREF / DAC_LEVELS)
+#define DECK_DAC_I2C_ADDRESS 0x98 //
+#define DAC_WRITE_LENGTH 2
+#define DAC_ANALOG_HW_DELAY_AFTER_SET 100
+#define V_DD 3.3f
+
+// Potentiometer Params
+#define R10 200f                         // 200 Ohm
+#define TYPICAL_DC_WIPER_RESISTANCE 155f // 155 OHM
+#define POTENTIOMETER_ADDR 0x94          //
+#define POTENTIOMETER_BIT 7
+// #define POTENTIOMETER_STEPS pow(2, POTENTIOMETER_BIT) // 7 bit --> 128
+#define POTENTIOMETER_NUMBER_OF_STEPS (1 << POTENTIOMETER_BIT) - 1 // 127
+#define POTENTIOMETER_FULL_SCALE_RAB 50E3                          // 50 kOhm
+#define POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET 100
 
 // ------ Anchors Parameters -------
 // Resonance Freqs Anchors in Hz
@@ -111,7 +132,76 @@ volatile uint16_t Giallo_Idx = GialloIdx;
 volatile uint16_t Grigio_Idx = GrigioIdx;
 volatile uint16_t Rosso_Idx = RossoIdx;
 
-// funzione che fa l'fft e prende in input il puntatore ad un buffer di float
+// -------------------- DAC Functions -------------------------------
+uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
+{
+    // DAC7571
+    // https://www.ti.com/lit/ds/symlink/dac7571.pdf?ts=1718008558964&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FDAC7571
+    float V_out = desidered_Voltage;
+    float D_raw = (V_out * DAC_LEVELS) / V_DD;
+    // Round the value to the nearest integer value.
+    uint16_t D = (uint16_t)roundf(D_raw);
+    // check if the number is in [0-4095] otherwise raise and error
+    if (D < 0 || D > DAC_LEVELS - 1)
+    {
+        DEBUG_PRINT("Error: The value of the DAC is not in the range [0-4095]:%d\n", D);
+        return 0;
+    }
+
+    return D;
+}
+
+// ----------------- Potentiometer function ------------------------------
+float Potentiometer_Resistance_Value_from_Desidered_Gain(float desidered_Gain)
+{
+    // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/22147a.pdf
+    // this resistance is R12 in the schematic and it correspond to R_wb in formulas 6-2
+    return (desidered_Gain - 1) * R10;
+}
+
+uint16_t Potentiometer_Value_To_Set(float desidered_Gain)
+{
+    // equation  6-2 datasheet  DS22147A
+    // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/22147a.pdf
+
+    float R_WB_from_Desidered_Gain = Potentiometer_Resistance_Value_from_Desidered_Gain(desidered_Gain);
+    // Step resistance (RS) is the resistance from one tap setting to the next. Values in  [4000-6000] Ohm, typical 5000 Ohm
+    float R_S = POTENTIOMETER_FULL_SCALE_RAB / POTENTIOMETER_NUMBER_OF_STEPS;
+    // Compute the Raw value of the N starting from equation 6-2
+    float N_raw = (R_WB_from_Desidered_Gain - TYPICAL_DC_WIPER_RESISTANCE) / R_S;
+    // Round the value to the nearest integer value.
+    uint16_t N = (uint16_t)roundf(N_raw);
+    // check if the number is in [0-127] otherwise raise and error
+    if (N < 0 || N > POTENTIOMETER_NUMBER_OF_STEPS)
+    {
+        DEBUG_PRINT("Error: The value of the potentiometer is not in the range [0-127]:%d\n", N);
+        return 0;
+    }
+    return N;
+}
+
+// ---------------- DMA Interrupt Handler ------------------------------
+void DMA2_Stream4_IRQHandler(void)
+{
+    // DEBUG_PRINT("DMA2_Stream4_IRQHandler\n");
+    // if (DMA_GetITStatus(DMA_Stream, DMA_IT_HTIF0)) //&& (xSemaphoreTake(semaphoreHalfBuffer, 0) == pdTRUE))
+    // {
+    //     // ADC_Cmd(ADC_n, DISABLE);
+    //     // DEBUG_PRINT("ADC disabled\n");
+    //     DMA_ClearITPendingBit(DMA_Stream, DMA_IT_HTIF0);
+    // }
+
+    if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4)) //&& (xSemaphoreTake(semaphoreHalfBuffer, 0) == pdTRUE))
+    {
+        // ADC_Cmd(ADC_n, DISABLE);
+        // DEBUG_PRINT("ADC disabled\n");
+        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
+        ADC_Done = 1;
+    }
+}
+
+// -------------------- Cycling Function ----------------------------
+// fft and kalman update function
 void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor)
 {
     // DEBUG_PRINT("performFFT started!\n");
@@ -263,6 +353,25 @@ static void mytask(void *param)
     systemWaitStart();
     DEBUG_PRINT("System Started\n");
 
+    // DAC Setup
+    // SETTING the reference voltaage for the DAC using i2c
+    float64_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
+    // DEBUG_PRINT("Value for DAC: %f\n", ValueforDAC);
+    i2cdevWrite(I2C1_DEV, DECK_DAC_I2C_ADDRESS, DAC_WRITE_LENGTH, &ValueforDAC);
+    // wait some time that the Hw is setted
+    vTaskDelay(M2T(DAC_ANALOG_HW_DELAY_AFTER_SET));
+
+    // Potentiometer Setup
+    float Potentiometer_Value = Potentiometer_Value_To_Set(100);
+    // DEBUG_PRINT("Potentiometer Value: %f\n", Potentiometer_Value);
+    i2cdevWrite(I2C1_DEV, POTENTIOMETER_ADDR, 1, &Potentiometer_Value);
+    vTaskDelay(M2T(POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET));
+
+    DEBUG_PRINT("ADD SAFETY CHECK");
+    DEBUG_PRINT("ADD SAFETY CHECK");
+    DEBUG_PRINT("ADD SAFETY CHECK");
+    DEBUG_PRINT("ADD SAFETY CHECK");
+
     // gpio init
     GPIO_init(DECK_GPIO_RX2);
     // DMA init
@@ -310,25 +419,6 @@ static void mytask(void *param)
     }
 }
 
-void DMA2_Stream4_IRQHandler(void)
-{
-    // DEBUG_PRINT("DMA2_Stream4_IRQHandler\n");
-    // if (DMA_GetITStatus(DMA_Stream, DMA_IT_HTIF0)) //&& (xSemaphoreTake(semaphoreHalfBuffer, 0) == pdTRUE))
-    // {
-    //     // ADC_Cmd(ADC_n, DISABLE);
-    //     // DEBUG_PRINT("ADC disabled\n");
-    //     DMA_ClearITPendingBit(DMA_Stream, DMA_IT_HTIF0);
-    // }
-
-    if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4)) //&& (xSemaphoreTake(semaphoreHalfBuffer, 0) == pdTRUE))
-    {
-        // ADC_Cmd(ADC_n, DISABLE);
-        // DEBUG_PRINT("ADC disabled\n");
-        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
-        ADC_Done = 1;
-    }
-}
-
 static void magneticInit()
 {
     if (isInit)
@@ -353,6 +443,7 @@ static bool magneticTest()
 static const DeckDriver magneticDriver = {
     .name = "Magnetic",
     .usedGpio = DECK_USING_PA3,
+    .usedPeriph = DECK_USING_I2C,
     .init = magneticInit,
     .test = magneticTest,
 };
