@@ -48,4 +48,3 @@ build/
 *.elf
 
 tools/dependency/web/data.js
-.vscode/settings.json
