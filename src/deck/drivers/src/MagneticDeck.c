@@ -236,28 +236,29 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     // Calculate the maximum value and its index around NeroIdx
     float32_t maxval;
     uint32_t maxindex;
-    arm_max_f32(&fft_magnitude[NeroIdx - 1], 3, &maxval, &maxindex);
+    arm_max_f32(&fft_magnitude[NeroIdx - 1], 3, &NeroAmpl, &maxindex);
     maxindex += NeroIdx - 1;
 
-    NeroAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+    NeroAmpl = NeroAmpl * flattopCorrectionFactor;
+    // NeroAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around GialloIdx
-    arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &maxval, &maxindex);
+    arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &GialloAmpl, &maxindex);
     maxindex += GialloIdx - 1;
-
-    GialloAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+    GialloAmpl = GialloAmpl * flattopCorrectionFactor;
+    // GialloAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around GrigioIdx
-    arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &maxval, &maxindex);
+    arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &GrigioAmpl, &maxindex);
     maxindex += GrigioIdx - 1;
-
-    GrigioAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+    GrigioAmpl = GrigioAmpl * flattopCorrectionFactor;
+    // GrigioAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around RossoIdx
-    arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &maxval, &maxindex);
+    arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &RossoAmpl, &maxindex);
     maxindex += RossoIdx - 1;
-
-    RossoAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+    RossoAmpl = RossoAmpl * flattopCorrectionFactor;
+    // RossoAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // --------------------------------- 2D MEASURMENT MODEL - DISTANCE COMPUTATION ---------------------------------
 
@@ -464,12 +465,12 @@ LOG_ADD(LOG_FLOAT, Grigio, &Grigio_distance)
 LOG_ADD(LOG_FLOAT, Rosso, &Rosso_distance)
 LOG_GROUP_STOP(MAGNETIC_DISTANCES)
 
-// LOG_GROUP_START(MAGNETIC_VOLTAGES)
-// LOG_ADD(LOG_FLOAT, Nero, &NeroAmpl)
-// LOG_ADD(LOG_FLOAT, Giallo, &GialloAmpl)
-// LOG_ADD(LOG_FLOAT, Grigio, &GrigioAmpl)
-// LOG_ADD(LOG_FLOAT, Rosso, &RossoAmpl)
-// LOG_GROUP_STOP(MAGNETIC_VOLTAGES)
+LOG_GROUP_START(MAGNETIC_VOLTAGES)
+LOG_ADD(LOG_FLOAT, Nero, &NeroAmpl)
+LOG_ADD(LOG_FLOAT, Giallo, &GialloAmpl)
+LOG_ADD(LOG_FLOAT, Grigio, &GrigioAmpl)
+LOG_ADD(LOG_FLOAT, Rosso, &RossoAmpl)
+LOG_GROUP_STOP(MAGNETIC_VOLTAGES)
 
 PARAM_GROUP_START(MAGNETIC_Params)
 // PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
