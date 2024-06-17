@@ -230,55 +230,55 @@ void V_rx_derivate_x(float T_x, float T_y, float T_z, float W_x, float W_y, floa
     float t106 = t23 * t50 * t94;
 
     V_rx_derivative_x[0] = F_0 * G_ina * N * S * PI *
-                           copysign(1.0, MU_0 * W_x * t7 * t51 * (t12 - t98) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t51 * (t13 - t102)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t51 * (t14 - t106)) / 4.0f) *
+                           copysignf(1.0f, MU_0 * W_x * t7 * t51 * (t12 - t98) * (-1.0f / 4.0f) -
+                                               (MU_0 * W_y * t7 * t51 * (t13 - t102)) / 4.0f -
+                                               (MU_0 * W_z * t7 * t51 * (t14 - t106)) / 4.0f) *
                            ((MU_0 * W_y * t7 * t51 * (t19 * t50 * t122 + (t19 * t30 * t51 * t94) / 2.0f)) / 4.0f +
                             (MU_0 * W_z * t7 * t51 * (t23 * t50 * t122 + (t23 * t30 * t51 * t94) / 2.0f)) / 4.0f +
                             (MU_0 * W_x * t7 * t51 * (-t50 * t94 + t15 * t50 * t122 + (t15 * t30 * t51 * t94) / 2.0f)) / 4.0f -
                             MU_0 * W_x * t7 * t30 * t53 * (t12 - t98) * (3.0f / 8.0f) -
                             MU_0 * W_y * t7 * t30 * t53 * (t13 - t102) * (3.0f / 8.0f) -
                             MU_0 * W_z * t7 * t30 * t53 * (t14 - t106) * (3.0f / 8.0f)) *
-                           2.0;
+                           2.0f;
 
     float t107 = t24 * t52 * t95;
     V_rx_derivative_x[1] = F_1 * G_ina * N * S * PI *
-                           copysign(1.0, MU_0 * W_x * t7 * t54 * (t12 - t99) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t54 * (t13 - t103)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t54 * (t14 - t107)) / 4.0f) *
+                           copysignf(1.0f, MU_0 * W_x * t7 * t54 * (t12 - t99) * (-1.0f / 4.0f) -
+                                               (MU_0 * W_y * t7 * t54 * (t13 - t103)) / 4.0f -
+                                               (MU_0 * W_z * t7 * t54 * (t14 - t107)) / 4.0f) *
                            ((MU_0 * W_y * t7 * t54 * (t20 * t52 * t123 + (t20 * t31 * t54 * t95) / 2.0f)) / 4.0f +
                             (MU_0 * W_z * t7 * t54 * (t24 * t52 * t123 + (t24 * t31 * t54 * t95) / 2.0f)) / 4.0f +
                             (MU_0 * W_x * t7 * t54 * (-t52 * t95 + t16 * t52 * t123 + (t16 * t31 * t54 * t95) / 2.0f)) / 4.0f -
                             MU_0 * W_x * t7 * t31 * t56 * (t12 - t99) * (3.0f / 8.0f) -
                             MU_0 * W_y * t7 * t31 * t56 * (t13 - t103) * (3.0f / 8.0f) -
                             MU_0 * W_z * t7 * t31 * t56 * (t14 - t107) * (3.0f / 8.0f)) *
-                           2.0;
+                           2.0f;
 
     float t108 = t25 * t55 * t96;
     V_rx_derivative_x[2] = F_2 * G_ina * N * S * PI *
-                           copysign(1.0, MU_0 * W_x * t7 * t57 * (t12 - t100) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t57 * (t13 - t104)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t57 * (t14 - t108)) / 4.0f) *
+                           copysignf(1.0f, MU_0 * W_x * t7 * t57 * (t12 - t100) * (-1.0f / 4.0f) -
+                                               (MU_0 * W_y * t7 * t57 * (t13 - t104)) / 4.0f -
+                                               (MU_0 * W_z * t7 * t57 * (t14 - t108)) / 4.0f) *
                            ((MU_0 * W_y * t7 * t57 * (t21 * t55 * t124 + (t21 * t32 * t57 * t96) / 2.0f)) / 4.0f +
                             (MU_0 * W_z * t7 * t57 * (t25 * t55 * t124 + (t25 * t32 * t57 * t96) / 2.0f)) / 4.0f +
                             (MU_0 * W_x * t7 * t57 * (-t55 * t96 + t17 * t55 * t124 + (t17 * t32 * t57 * t96) / 2.0f)) / 4.0f -
                             MU_0 * W_x * t7 * t32 * t59 * (t12 - t100) * (3.0f / 8.0f) -
                             MU_0 * W_y * t7 * t32 * t59 * (t13 - t104) * (3.0f / 8.0f) -
                             MU_0 * W_z * t7 * t32 * t59 * (t14 - t108) * (3.0f / 8.0f)) *
-                           2.0;
+                           2.0f;
 
     float t109 = t26 * t58 * t97;
     V_rx_derivative_x[3] = F_3 * G_ina * N * S * PI *
-                           copysign(1.0, MU_0 * W_x * t7 * t60 * (t12 - t101) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t60 * (t13 - t105)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t60 * (t14 - t109)) / 4.0f) *
+                           copysignf(1.0f, MU_0 * W_x * t7 * t60 * (t12 - t101) * (-1.0f / 4.0f) -
+                                               (MU_0 * W_y * t7 * t60 * (t13 - t105)) / 4.0f -
+                                               (MU_0 * W_z * t7 * t60 * (t14 - t109)) / 4.0f) *
                            ((MU_0 * W_y * t7 * t60 * (t22 * t58 * t125 + (t22 * t33 * t60 * t97) / 2.0f)) / 4.0f +
                             (MU_0 * W_z * t7 * t60 * (t26 * t58 * t125 + (t26 * t33 * t60 * t97) / 2.0f)) / 4.0f +
                             (MU_0 * W_x * t7 * t60 * (-t58 * t97 + t18 * t58 * t125 + (t18 * t33 * t60 * t97) / 2.0f)) / 4.0f -
                             MU_0 * W_x * t7 * t33 * t61 * (t12 - t101) * (3.0f / 8.0f) -
                             MU_0 * W_y * t7 * t33 * t61 * (t13 - t105) * (3.0f / 8.0f) -
                             MU_0 * W_z * t7 * t33 * t61 * (t14 - t109) * (3.0f / 8.0f)) *
-                           2.0;
+                           2.0f;
 }
 
 void V_rx_derivate_y(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
@@ -611,10 +611,10 @@ void V_rx_derivate_z(float T_x, float T_y, float T_z, float W_x, float W_y, floa
                          2.0f;
 }
 
-float get_B_field_for_a_Anchor(float *anchor_pos,
-                               float *tag_pos,
-                               float *tag_or_versor,
-                               float *B_field)
+void get_B_field_for_a_Anchor(float *anchor_pos,
+                              float *tag_pos,
+                              float *tag_or_versor,
+                              float *B_field)
 {
     float tx_rx_versor[3];
     getversor(anchor_pos, tag_pos, tx_rx_versor, 3);
@@ -640,9 +640,9 @@ float get_B_field_for_a_Anchor(float *anchor_pos,
 
     // float magnetic_dipole_moment_tx_magnitude = euclidean_distance(magnetic_dipole_moment_tx, magnetic_dipole_moment_tx, 3);
     // compute the norm of the magnetic dipole moment
-    float magnetic_dipole_moment_tx_magnitude = sqrtf(magnetic_dipole_moment_tx[0] * magnetic_dipole_moment_tx[0] +
-                                                      magnetic_dipole_moment_tx[1] * magnetic_dipole_moment_tx[1] +
-                                                      magnetic_dipole_moment_tx[2] * magnetic_dipole_moment_tx[2]);
+    // float magnetic_dipole_moment_tx_magnitude = sqrtf(magnetic_dipole_moment_tx[0] * magnetic_dipole_moment_tx[0] +
+    //                                                   magnetic_dipole_moment_tx[1] * magnetic_dipole_moment_tx[1] +
+    //                                                   magnetic_dipole_moment_tx[2] * magnetic_dipole_moment_tx[2]);
 
     // normalizing the B field
     B_field[0] = B_temp[0]; // * magnetic_dipole_moment_tx_magnitude;
@@ -655,23 +655,18 @@ float V_from_B(float *B_field, float *rx_versor, int resonanceFreq)
 
     float dot_product_V = dot_product(B_field, rx_versor, 3);
 
-    float V = G_INA * fabs(2 * PI * resonanceFreq * PI * RAY * RAY * N_WOUNDS * dot_product_V);
+    float V = G_INA * fabsf(2 * PI * resonanceFreq * PI * RAY * RAY * N_WOUNDS * dot_product_V);
     return V;
 }
 
-float kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
-                               voltMeasurement_t *voltAnchor)
+void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
+                              voltMeasurement_t *voltAnchor)
 {
 
     float B_field_vector_1[3];
     float B_field_vector_2[3];
     float B_field_vector_3[3];
     float B_field_vector_4[3];
-
-    float anchor_1_pose[3] = {};
-    float anchor_2_pose[3] = {};
-    float anchor_3_pose[3] = {};
-    float anchor_4_pose[3] = {};
 
     if (currentCalibrationTick < CALIBRATION_TIC_VALUE)
     {
@@ -703,10 +698,10 @@ float kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
 
             DEBUG_PRINT("calibration data acquired!!\n");
 
-            DEBUG_PRINT("calibration_Mean[0][0] = %f\n", meanData_a1);
-            DEBUG_PRINT("calibration_Mean[1][1] = %f\n", meanData_a2);
-            DEBUG_PRINT("calibration_Mean[2][2] = %f\n", meanData_a3);
-            DEBUG_PRINT("calibration_Mean[3][3] = %f\n", meanData_a4);
+            DEBUG_PRINT("calibration_Mean[0][0] = %f\n", (double)meanData_a1);
+            DEBUG_PRINT("calibration_Mean[1][1] = %f\n", (double)meanData_a2);
+            DEBUG_PRINT("calibration_Mean[2][2] = %f\n", (double)meanData_a3);
+            DEBUG_PRINT("calibration_Mean[3][3] = %f\n", (double)meanData_a4);
 
             // computing the predicted voltages to calculate the rapport between the measured and the predicted
             float tag_pos_predicted_calibrated[3] = {this->S[KC_STATE_X], this->S[KC_STATE_Y], this->S[KC_STATE_Z]};
@@ -744,19 +739,19 @@ float kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
             PredictedVoltages[1] = V_rx_2;
             PredictedVoltages[2] = V_rx_3;
             PredictedVoltages[3] = V_rx_4;
-            DEBUG_PRINT("PredictedVoltages[0] = %f\n", PredictedVoltages[0]);
-            DEBUG_PRINT("PredictedVoltages[1] = %f\n", PredictedVoltages[1]);
-            DEBUG_PRINT("PredictedVoltages[2] = %f\n", PredictedVoltages[2]);
-            DEBUG_PRINT("PredictedVoltages[3] = %f\n", PredictedVoltages[3]);
+            DEBUG_PRINT("PredictedVoltages[0] = %f\n", (double)PredictedVoltages[0]);
+            DEBUG_PRINT("PredictedVoltages[1] = %f\n", (double)PredictedVoltages[1]);
+            DEBUG_PRINT("PredictedVoltages[2] = %f\n", (double)PredictedVoltages[2]);
+            DEBUG_PRINT("PredictedVoltages[3] = %f\n", (double)PredictedVoltages[3]);
 
             CG_a1 = meanData_a1 / PredictedVoltages[0];
             CG_a2 = meanData_a2 / PredictedVoltages[1];
             CG_a3 = meanData_a3 / PredictedVoltages[2];
             CG_a4 = meanData_a4 / PredictedVoltages[3];
-            DEBUG_PRINT("CG_a1 = %f\n", CG_a1);
-            DEBUG_PRINT("CG_a2 = %f\n", CG_a2);
-            DEBUG_PRINT("CG_a3 = %f\n", CG_a3);
-            DEBUG_PRINT("CG_a4 = %f\n", CG_a4);
+            DEBUG_PRINT("CG_a1 = %f\n", (double)CG_a1);
+            DEBUG_PRINT("CG_a2 = %f\n", (double)CG_a2);
+            DEBUG_PRINT("CG_a3 = %f\n", (double)CG_a3);
+            DEBUG_PRINT("CG_a4 = %f\n", (double)CG_a4);
         }
         else
         {

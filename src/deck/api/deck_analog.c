@@ -32,6 +32,7 @@
 #include "stm32f4xx_adc.h"
 #include "stm32f4xx_rcc.h"
 #include "stm32f4xx_gpio.h"
+#include "arm_math.h"
 
 static uint32_t stregResolution;
 static uint32_t adcRange;
@@ -174,8 +175,7 @@ float analogReadVoltage(const deckPin_t pin)
 
 // #define ADC1_DR ((uint32_t)0x4001244C) #arraySize 20000 __IO uint16_t DMA_Buffer[arraySize];
 // #define DMA_Str DMA2_Stream4
-
-void GPIO_init(const deckPin_t pin)
+void GPIO_init_analog(const deckPin_t pin)
 {
   assert_param(deckGPIOMapping[pin.id].adcCh > -1);
   RCC_AHB1PeriphClockCmd(deckGPIOMapping[pin.id].periph, ENABLE);
@@ -306,8 +306,8 @@ void DMA_inititalization(uint32_t RCC_DMA_Peripheral, DMA_Stream_TypeDef *DMA_St
 
   DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
   DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
-  DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord; // source size - 16bit
-  DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;         // destination size = 16b
+  DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_Word; // source size - 32bit
+  DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_Word;         // destination size = 32b
   DMA_InitStructure.DMA_Mode = DMA_Mode_Normal;
   DMA_InitStructure.DMA_Priority = DMA_Priority_Low;
   DMA_InitStructure.DMA_FIFOMode = DMA_FIFOMode_Disable;

@@ -29,6 +29,7 @@
 
 #include <stdint.h>
 #include "deck_constants.h"
+#include "arm_math.h"
 
 /* Voltage reference types for the analogReference() function. */
 #define DEFAULT 0
@@ -48,5 +49,18 @@ void analogReadResolution(uint8_t bits);
  * @return          voltage in volts
  */
 float analogReadVoltage(const deckPin_t pin);
+
+// DMA ADC SECTION
+void GPIO_init_analog(const deckPin_t pin);
+
+void setADC_Off(ADC_TypeDef *ADCx);
+
+void ADC_init_DMA_mode(uint32_t RCC_APB2Periph_ADCx, ADC_TypeDef *ADCx);
+
+void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_t ADC_SampleTime);
+
+void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ);
+
+void DMA_inititalization(uint32_t RCC_DMA_Peripheral, DMA_Stream_TypeDef *DMA_Stream, uint32_t *DMA_Buffer, ADC_TypeDef *ADC_n, uint32_t DMA_Channel, IRQn_Type DMA_IRQ, uint16_t BufferSize);
 
 #endif

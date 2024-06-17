@@ -17,6 +17,7 @@
 #include "arm_const_structs.h"
 #include "task.h"
 #include "log.h"
+#include "system.h"
 #include "param.h"
 #include "i2cdev.h"
 
@@ -24,14 +25,14 @@
 
 // ADC DMA configuration
 #define ARRAY_SIZE 2048
-uint16_t DMA_Buffer[ARRAY_SIZE];
+uint32_t DMA_Buffer[ARRAY_SIZE];
 ADC_TypeDef *ADC_n = ADC1;
 DMA_Stream_TypeDef *DMA_Stream = DMA2_Stream4;
 uint32_t DMA_Channel = DMA_Channel_0;
 IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
 // 2^12 DOVE 12 SONO I BIT DELL'ADC DEL MCU = 4096
 #define ADC_LEVELS 4096
-#define ADC_MAX_VOLTAGE 3.3
+#define ADC_MAX_VOLTAGE 3.3f
 #define PCLK2 84e6
 #define ADC_PRESCALER 6
 // 12 from bit and 15 from the register value 12+15 = 27
@@ -112,10 +113,10 @@ volatile float32_t MagneticStandardDeviation = Default_MagneticStandardDeviation
 volatile uint16_t firstValue = 0;
 volatile uint16_t FirstVolt = 0;
 
-volatile float32_t NeroAmpl = 0;
-volatile float32_t GialloAmpl = 0;
-volatile float32_t GrigioAmpl = 0;
-volatile float32_t RossoAmpl = 0;
+float32_t NeroAmpl = 0;
+float32_t GialloAmpl = 0;
+float32_t GrigioAmpl = 0;
+float32_t RossoAmpl = 0;
 
 // Distances
 volatile float32_t Nero_distance = 0;
@@ -125,7 +126,7 @@ volatile float32_t Rosso_distance = 0;
 
 // FFT
 volatile uint16_t bin_size = BIN_SIZE;
-volatile uint16_t Fc = Fc_ADC;
+volatile uint32_t Fc = Fc_ADC;
 volatile uint16_t fft_size = FFT_SIZE;
 volatile uint16_t Nero_Idx = NeroIdx; // Assign the constant value directly to the variable
 volatile uint16_t Giallo_Idx = GialloIdx;
@@ -137,14 +138,14 @@ float NeroAmpl_steps[2] = {0, 0};
 int debug_idx = 0;
 
 // -------------------- DAC Functions -------------------------------
-uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
+uint8_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
 {
     // DAC7571
     // https://www.ti.com/lit/ds/symlink/dac7571.pdf?ts=1718008558964&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FDAC7571
     float V_out = desidered_Voltage;
     float D_raw = (V_out * DAC_LEVELS) / V_DD;
     // Round the value to the nearest integer value.
-    uint16_t D = (uint16_t)roundf(D_raw);
+    uint8_t D = (uint8_t)roundf(D_raw);
     // check if the number is in [0-4095] otherwise raise and error
     if (D < 0 || D > DAC_LEVELS - 1)
     {
@@ -163,7 +164,7 @@ float Potentiometer_Resistance_Value_from_Desidered_Gain(float desidered_Gain)
     return (desidered_Gain - 1) * R10;
 }
 
-uint16_t Potentiometer_Value_To_Set(float desidered_Gain)
+uint8_t Potentiometer_Value_To_Set(float desidered_Gain)
 {
     // equation  6-2 datasheet  DS22147A
     // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/22147a.pdf
@@ -174,7 +175,7 @@ uint16_t Potentiometer_Value_To_Set(float desidered_Gain)
     // Compute the Raw value of the N starting from equation 6-2
     float N_raw = (R_WB_from_Desidered_Gain - TYPICAL_DC_WIPER_RESISTANCE) / R_S;
     // Round the value to the nearest integer value.
-    uint16_t N = (uint16_t)roundf(N_raw);
+    uint8_t N = (uint8_t)roundf(N_raw);
     // check if the number is in [0-127] otherwise raise and error
     if (N < 0 || N > POTENTIOMETER_NUMBER_OF_STEPS)
     {
@@ -224,16 +225,16 @@ void ADC1_IRQHandler(void)
 
 // -------------------- Cycling Function ----------------------------
 // fft and kalman update function
-void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor)
+void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor)
 {
     // DEBUG_PRINT("performFFT started!\n");
     // perform FFT on first half of buffer
-    arm_q15_to_float((q15_t *)Input_buffer_pointer, Output_buffer_pointer, FFT_SIZE);
+    arm_q31_to_float((q31_t *)Input_buffer_pointer, Output_buffer_pointer, FFT_SIZE);
     int p = 0;
     for (p = 0; p < FFT_SIZE; p++)
     {
         // Fattore di scala della conversione della funzione, guarda doc per capire
-        Output_buffer_pointer[p] = Output_buffer_pointer[p] * 32768;
+        Output_buffer_pointer[p] = Output_buffer_pointer[p] * 2147483648;
 
         // ADCLevelsToVolt
         Output_buffer_pointer[p] = Output_buffer_pointer[p] * (ADC_MAX_VOLTAGE / ADC_LEVELS);
@@ -256,7 +257,6 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     arm_cmplx_mag_f32(fft_output, fft_magnitude, FFT_SIZE / 2);
 
     // Calculate the maximum value and its index around NeroIdx
-    float32_t maxval;
     uint32_t maxindex;
     arm_max_f32(&fft_magnitude[NeroIdx - 1], 3, &NeroAmpl, &maxindex);
     maxindex += NeroIdx - 1;
@@ -272,7 +272,7 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
     }
     if (NeroAmpl_steps[0] == NeroAmpl_steps[1])
     {
-        DEBUG_PRINT("NeroAmpl: %f\n", NeroAmpl);
+        DEBUG_PRINT("NeroAmpl: %f\n", (double)NeroAmpl);
     }
     if (debug_idx == 1)
     {
@@ -393,14 +393,14 @@ static void mytask(void *param)
 
     // DAC Setup
     // SETTING the reference voltaage for the DAC using i2c
-    float64_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
+    uint8_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
     // DEBUG_PRINT("Value for DAC: %f\n", ValueforDAC);
     i2cdevWrite(I2C1_DEV, DECK_DAC_I2C_ADDRESS, DAC_WRITE_LENGTH, &ValueforDAC);
     // wait some time that the Hw is setted
     vTaskDelay(M2T(DAC_ANALOG_HW_DELAY_AFTER_SET));
 
     // Potentiometer Setup
-    float Potentiometer_Value = Potentiometer_Value_To_Set(100);
+    uint8_t Potentiometer_Value = Potentiometer_Value_To_Set(100);
     // DEBUG_PRINT("Potentiometer Value: %f\n", Potentiometer_Value);
     i2cdevWrite(I2C1_DEV, POTENTIOMETER_ADDR, 1, &Potentiometer_Value);
     vTaskDelay(M2T(POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET));
@@ -411,7 +411,7 @@ static void mytask(void *param)
     DEBUG_PRINT("ADD SAFETY CHECK");
 
     // gpio init
-    GPIO_init(DECK_GPIO_RX2);
+    GPIO_init_analog(DECK_GPIO_RX2);
     // DMA init
     DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
     // adc init
@@ -510,6 +510,7 @@ static void mytask(void *param)
             // Se si bloccal l'adc si puo' usare questo
             // non ha senso!!!
             // ADC_Done = 1;
+            DEBUG_PRINT("First Value: %d\n", ADC_Done);
             // ma funziona cosi, non so poi come siano i dati
         }
 

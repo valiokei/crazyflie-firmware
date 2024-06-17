@@ -88,6 +88,7 @@
 #include "mm_tof.h"
 #include "mm_yaw_error.h"
 #include "mm_sweep_angles.h"
+#include "mm_magnetic_distance.h"
 
 #include "mm_tdoa_robust.h"
 #include "mm_distance_robust.h"
