@@ -242,7 +242,7 @@ void ADC_init_DMA_mode(uint32_t RCC_APB2Periph_ADCx, ADC_TypeDef *ADCx)
   ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None; // TODO: controlla questo parametro
 
   // ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_Rising; // TODO: controlla questo parametro
-
+  ADC_ITConfig(ADCx, ADC_IT_OVR, ENABLE);
   ADC_InitStructure.ADC_NbrOfConversion = 1;
   ADC_InitStructure.ADC_ScanConvMode = DISABLE;
   ADC_Init(ADCx, &ADC_InitStructure);
@@ -257,6 +257,7 @@ void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_
   // ADC_RegularChannelConfig(ADC1, ADC_Channel_7, 1, ADC_SampleTime_480Cycles);
   //    questo preso da funzione analogReadChannel()
   // ADC_RegularChannelConfig(ADC2, channel, 1, ADC_SampleTime_15Cycles);
+  ADC_ContinuousModeCmd(ADC_n, ENABLE);
   ADC_RegularChannelConfig(ADC_n, ADC_Channel, Rank, ADC_SampleTime);
 
   /*enabling the DMA mode for regular channels group*/
@@ -268,6 +269,8 @@ void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_
 
   // Enable ADC DMA
   ADC_Cmd(ADC_n, ENABLE);
+  // NVIC_EnableIRQ(ADC_IRQn);
+
   // test = 30;
   // Start ADC Conversion
   ADC_SoftwareStartConv(ADC_n);
@@ -277,7 +280,7 @@ void ADC_DMA_start(ADC_TypeDef *ADC_n, uint8_t ADC_Channel, uint8_t Rank, uint8_
 void DMA_IRQ_enable(DMA_Stream_TypeDef *DMA_Stream, IRQn_Type DMA_IRQ)
 {
   // DMA_ITConfig(DMA_Stream, DMA_IT_HT | DMA_IT_TC, ENABLE);
-  DMA_ITConfig(DMA_Stream, DMA_IT_TC, ENABLE);
+  DMA_ITConfig(DMA_Stream, DMA_IT_TC | DMA_IT_TE, ENABLE);
 
   // Enable DMA1 channel IRQ Channel
   NVIC_InitTypeDef NVIC_InitStructure;

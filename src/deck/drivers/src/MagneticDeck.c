@@ -132,6 +132,10 @@ volatile uint16_t Giallo_Idx = GialloIdx;
 volatile uint16_t Grigio_Idx = GrigioIdx;
 volatile uint16_t Rosso_Idx = RossoIdx;
 
+// Brek sttuff debugging
+float NeroAmpl_steps[2] = {0, 0};
+int debug_idx = 0;
+
 // -------------------- DAC Functions -------------------------------
 uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
 {
@@ -193,10 +197,28 @@ void DMA2_Stream4_IRQHandler(void)
 
     if (DMA_GetITStatus(DMA_Stream, DMA_IT_TCIF4)) //&& (xSemaphoreTake(semaphoreHalfBuffer, 0) == pdTRUE))
     {
-        // ADC_Cmd(ADC_n, DISABLE);
+        // DMA_Cmd(DMA_Stream, DISABLE);
+        ADC_Cmd(ADC_n, DISABLE);
         // DEBUG_PRINT("ADC disabled\n");
+        ADC_ContinuousModeCmd(ADC_n, DISABLE);
         DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TCIF4);
+
         ADC_Done = 1;
+    }
+    if (DMA_GetITStatus(DMA_Stream, DMA_IT_TEIF4))
+    // NON RISOLVE IL PROBLEMA
+    {
+        DEBUG_PRINT("DMA_IT_TEIF4\n");
+        DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TEIF4);
+    }
+}
+
+void ADC1_IRQHandler(void)
+{
+    DEBUG_PRINT("ADC1_IRQHandler\n");
+    if (ADC_GetFlagStatus(ADC_n, ADC_FLAG_OVR))
+    {
+        ADC_ClearFlag(ADC_n, ADC_FLAG_OVR);
     }
 }
 
@@ -241,6 +263,21 @@ void performFFT(float32_t *Input_buffer_pointer, float32_t *Output_buffer_pointe
 
     NeroAmpl = NeroAmpl * flattopCorrectionFactor;
     // NeroAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+
+    // Debugging
+    if (debug_idx < 2)
+    {
+        NeroAmpl_steps[debug_idx] = NeroAmpl;
+        debug_idx++;
+    }
+    if (NeroAmpl_steps[0] == NeroAmpl_steps[1])
+    {
+        DEBUG_PRINT("NeroAmpl: %f\n", NeroAmpl);
+    }
+    if (debug_idx == 1)
+    {
+        debug_idx = 0;
+    }
 
     // Calculate the maximum value and its index around GialloIdx
     arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &GialloAmpl, &maxindex);
@@ -388,6 +425,7 @@ static void mytask(void *param)
 
     // Flattop correction factor calculation
     float32_t sum = 0.0;
+
     for (int i = 0; i < ARRAY_SIZE; i++)
     {
         sum += flattop_2048_lut[i];
@@ -404,8 +442,9 @@ static void mytask(void *param)
             firstValue = DMA_Buffer[1000];
             FirstVolt = firstValue * ADC_MAX_VOLTAGE / ADC_LEVELS;
 
-            DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
-            ADC_init_DMA_mode(RCC_APB2Periph_ADC1, ADC_n);
+            // DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
+            DMA_Cmd(DMA_Stream, ENABLE);
+            // ADC_init_DMA_mode(RCC_APB2Periph_ADC1, ADC_n);
             ADC_DMA_start(ADC_n, ADC_Channel, 1, ADC_SampleTime_15Cycles);
 
             ADC_Done = 0;
@@ -413,7 +452,65 @@ static void mytask(void *param)
         }
         else
         {
-            // DEBUG_PRINT("ADC_Done is 0\n");
+            // ----------------------------------------
+
+            // NON È NESSUNA DI QUESTE CONDIZIONI
+
+            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_OVR) != RESET)
+            // {
+            //     // Overrun occurred
+            //     // Take appropriate actions to handle the overrun
+            //     DEBUG_PRINT("Overrun occurred\n");
+            //     ADC_ClearFlag(ADC1, ADC_FLAG_OVR); // Clear the overrun flag
+            //     ADC_Done = 1;
+            // }
+            //             ADC_ClearFlag(ADC_n, ADC_FLAG_AWD);
+            // ADC_ClearFlag(ADC_n, ADC_FLAG_EOC);
+            // ADC_ClearFlag(ADC_n, ADC_FLAG_JEOC);
+            // ADC_ClearFlag(ADC_n, ADC_FLAG_JSTRT);
+            // ADC_ClearFlag(ADC_n, ADC_FLAG_STRT);
+            // ADC_ClearFlag(ADC_n, ADC_FLAG_OVR);
+            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_STRT) != RESET)
+            // {
+            //     DEBUG_PRINT("ADC_FLAG_STRT\n");
+            //     ADC_ClearFlag(ADC1, ADC_FLAG_STRT);
+            //     ADC_Done = 1;
+            // }
+            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) != RESET)
+            // {
+            //     DEBUG_PRINT("ADC_FLAG_EOC\n");
+            //     ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
+            //     ADC_Done = 1;
+            // }
+            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_JEOC) != RESET)
+            // {
+            //     DEBUG_PRINT("ADC_FLAG_JEOC\n");
+            //     ADC_ClearFlag(ADC1, ADC_FLAG_JEOC);
+            //     ADC_Done = 1;
+            // }
+            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_JSTRT) != RESET)
+            // {
+            //     DEBUG_PRINT("ADC_FLAG_JSTRT\n");
+            //     ADC_ClearFlag(ADC1, ADC_FLAG_JSTRT);
+            //     ADC_Done = 1;
+            // }
+            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_AWD) != RESET)
+            // {
+            //     DEBUG_PRINT("ADC_FLAG_AWD\n");
+            //     ADC_ClearFlag(ADC1, ADC_FLAG_AWD);
+            //     ADC_Done = 1;
+            // }
+            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_OVR) != RESET)
+            // {
+            //     DEBUG_PRINT("ADC_FLAG_OVR\n");
+            //     ADC_ClearFlag(ADC1, ADC_FLAG_OVR);
+            //     ADC_Done = 1;
+            // }
+
+            // Se si bloccal l'adc si puo' usare questo
+            // non ha senso!!!
+            // ADC_Done = 1;
+            // ma funziona cosi, non so poi come siano i dati
         }
 
         vTaskDelay(M2T(10));
