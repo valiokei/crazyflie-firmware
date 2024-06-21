@@ -32,7 +32,8 @@ uint32_t DMA_Channel = DMA_Channel_0;
 IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
 // 2^12 DOVE 12 SONO I BIT DELL'ADC DEL MCU = 4096
 #define ADC_LEVELS 4096
-#define ADC_MAX_VOLTAGE 3.3f
+//  CONTROLLA se è 3 o 3.0
+#define ADC_MAX_VOLTAGE 3.0f
 #define PCLK2 84e6
 #define ADC_PRESCALER 6
 // 12 from bit and 15 from the register value 12+15 = 27
@@ -61,7 +62,7 @@ uint32_t fft_length = FFT_SIZE;
 #define DAC_BIT 12
 #define DAC_LEVELS (1 << DAC_BIT) // 4096
 #define DAC_STEP (VREF / DAC_LEVELS)
-#define DECK_DAC_I2C_ADDRESS 0x98 //
+#define DECK_DAC_I2C_ADDRESS 0x4C //
 #define DAC_WRITE_LENGTH 2
 #define DAC_ANALOG_HW_DELAY_AFTER_SET 100
 #define V_DD 3.3f
@@ -69,7 +70,7 @@ uint32_t fft_length = FFT_SIZE;
 // Potentiometer Params
 #define R10 200.0f                         // 200 Ohm
 #define TYPICAL_DC_WIPER_RESISTANCE 15.05f // 155 OHM
-#define POTENTIOMETER_ADDR 0x94            //
+#define POTENTIOMETER_ADDR 0x2F            // 0x94 WRITE 0x95 READ
 #define POTENTIOMETER_BIT 7
 // #define POTENTIOMETER_STEPS pow(2, POTENTIOMETER_BIT) // 7 bit --> 128
 #define POTENTIOMETER_NUMBER_OF_STEPS (1 << POTENTIOMETER_BIT) - 1 // 127
@@ -138,14 +139,14 @@ float NeroAmpl_steps[2] = {0, 0};
 int debug_idx = 0;
 
 // -------------------- DAC Functions -------------------------------
-uint8_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
+uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
 {
     // DAC7571
     // https://www.ti.com/lit/ds/symlink/dac7571.pdf?ts=1718008558964&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FDAC7571
     float V_out = desidered_Voltage;
     float D_raw = (V_out * DAC_LEVELS) / V_DD;
     // Round the value to the nearest integer value.
-    uint8_t D = (uint8_t)roundf(D_raw);
+    uint16_t D = (uint16_t)roundf(D_raw);
     // check if the number is in [0-4095] otherwise raise and error
     if (D < 0 || D > DAC_LEVELS - 1)
     {
@@ -177,7 +178,7 @@ uint8_t Potentiometer_Value_To_Set(float desidered_Gain)
     // Round the value to the nearest integer value.
     uint8_t N = (uint8_t)roundf(N_raw);
     // check if the number is in [0-127] otherwise raise and error
-    if (N < 0 || N > POTENTIOMETER_NUMBER_OF_STEPS)
+    if (N > POTENTIOMETER_NUMBER_OF_STEPS)
     {
         DEBUG_PRINT("Error: The value of the potentiometer is not in the range [0-127]:%d\n", N);
         return 0;
@@ -227,8 +228,6 @@ void ADC1_IRQHandler(void)
 // fft and kalman update function
 void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor)
 {
-    // DEBUG_PRINT("performFFT started!\n");
-    // perform FFT on first half of buffer
     arm_q31_to_float((q31_t *)Input_buffer_pointer, Output_buffer_pointer, FFT_SIZE);
     int p = 0;
     for (p = 0; p < FFT_SIZE; p++)
@@ -393,22 +392,36 @@ static void mytask(void *param)
 
     // DAC Setup
     // SETTING the reference voltaage for the DAC using i2c
-    uint8_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
-    // DEBUG_PRINT("Value for DAC: %f\n", ValueforDAC);
-    i2cdevWrite(I2C1_DEV, DECK_DAC_I2C_ADDRESS, DAC_WRITE_LENGTH, &ValueforDAC);
+    uint16_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
+    uint8_t DAC_Write[2] = {0, 0};
+
+    DAC_Write[1] = ValueforDAC & 0x00FF;
+    DAC_Write[0] = (ValueforDAC >> 8) & 0x00FF;
+    DEBUG_PRINT("Value for DAC: %d\n", ValueforDAC);
+    uint8_t dacWriteResult = i2cdevWrite(I2C1_DEV, DECK_DAC_I2C_ADDRESS, DAC_WRITE_LENGTH, &DAC_Write[0]);
     // wait some time that the Hw is setted
     vTaskDelay(M2T(DAC_ANALOG_HW_DELAY_AFTER_SET));
+    DEBUG_PRINT("DAC Write result: %d\n", dacWriteResult);
 
     // Potentiometer Setup
     uint8_t Potentiometer_Value = Potentiometer_Value_To_Set(100);
-    // DEBUG_PRINT("Potentiometer Value: %f\n", Potentiometer_Value);
-    i2cdevWrite(I2C1_DEV, POTENTIOMETER_ADDR, 1, &Potentiometer_Value);
+    DEBUG_PRINT("Potentiometer Value to set: %d\n", Potentiometer_Value);
+    uint8_t result_read_potentiometer = i2cdevWrite(I2C1_DEV, POTENTIOMETER_ADDR, 1, &Potentiometer_Value);
     vTaskDelay(M2T(POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET));
+    DEBUG_PRINT("Potentiometer Write result: %d\n", result_read_potentiometer);
 
-    DEBUG_PRINT("ADD SAFETY CHECK");
-    DEBUG_PRINT("ADD SAFETY CHECK");
-    DEBUG_PRINT("ADD SAFETY CHECK");
-    DEBUG_PRINT("ADD SAFETY CHECK");
+    // reading the value of the potentiometer
+    uint8_t PotentiometerReadValue = 10;
+    uint8_t result_read = i2cdevRead(I2C1_DEV, POTENTIOMETER_ADDR, 1, &PotentiometerReadValue);
+
+    vTaskDelay(M2T(POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET));
+    DEBUG_PRINT("Potentiometer Readed result: %d\n", result_read);
+    DEBUG_PRINT("Potentiometer Read Value: %d\n", PotentiometerReadValue);
+
+    DEBUG_PRINT("ADD SAFETY CHECK\n");
+    DEBUG_PRINT("ADD SAFETY CHECK\n");
+    DEBUG_PRINT("ADD SAFETY CHECK\n");
+    DEBUG_PRINT("ADD SAFETY CHECK\n");
 
     // gpio init
     GPIO_init_analog(DECK_GPIO_RX2);
@@ -540,7 +553,7 @@ static bool magneticTest()
 }
 
 static const DeckDriver magneticDriver = {
-    .name = "Magnetic",
+    .name = "MagneticDeck",
     .usedGpio = DECK_USING_PA3,
     .usedPeriph = DECK_USING_I2C,
     .init = magneticInit,
