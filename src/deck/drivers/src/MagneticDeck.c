@@ -68,14 +68,19 @@ uint32_t fft_length = FFT_SIZE;
 #define V_DD 3.3f
 
 // Potentiometer Params
-#define R10 200.0f                         // 200 Ohm
-#define TYPICAL_DC_WIPER_RESISTANCE 15.05f // 155 OHM
-#define POTENTIOMETER_ADDR 0x2F            // 0x94 WRITE 0x95 READ
+#define R10 200.0f // 200 Ohm
+// #define TYPICAL_DC_WIPER_RESISTANCE 15.05f // 155 OHM
+#define RW_2_7V 155 // ohm
+#define RW_5_5V 100 // ohm
+
+#define POTENTIOMETER_ADDR 0x2F // 0x94 WRITE 0x95 READ
 #define POTENTIOMETER_BIT 7
 // #define POTENTIOMETER_STEPS pow(2, POTENTIOMETER_BIT) // 7 bit --> 128
 #define POTENTIOMETER_NUMBER_OF_STEPS (1 << POTENTIOMETER_BIT) - 1 // 127
 #define POTENTIOMETER_FULL_SCALE_RAB 50E3                          // 50 kOhm
 #define POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET 100
+float32_t GainValue_Setted = 0;
+float GainValue = 10;
 
 // ------ Anchors Parameters -------
 // Resonance Freqs Anchors in Hz
@@ -158,6 +163,16 @@ uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
 }
 
 // ----------------- Potentiometer function ------------------------------
+uint16_t WiperResistanceValue_From_Interpolation(float Vdd)
+{
+    // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/22147a.pdf
+
+    float R_WB = ((5.5 - Vdd) / (5.5 - 2.7)) * RW_2_7V + ((Vdd - 2.7) / (5.5 - 2.7)) * RW_5_5V;
+
+    uint16_t D = (uint16_t)roundf(R_WB);
+    return R_WB;
+}
+
 float Potentiometer_Resistance_Value_from_Desidered_Gain(float desidered_Gain)
 {
     // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/22147a.pdf
@@ -171,9 +186,11 @@ uint8_t Potentiometer_Value_To_Set(float desidered_Gain)
     // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/22147a.pdf
 
     float R_WB_from_Desidered_Gain = Potentiometer_Resistance_Value_from_Desidered_Gain(desidered_Gain);
+    // DEBUG_PRINT("R_WB_from_Desidered_Gain: %f\n", R_WB_from_Desidered_Gain);
     // Step resistance (RS) is the resistance from one tap setting to the next. Values in  [4000-6000] Ohm, typical 5000 Ohm
     float R_S = POTENTIOMETER_FULL_SCALE_RAB / POTENTIOMETER_NUMBER_OF_STEPS;
     // Compute the Raw value of the N starting from equation 6-2
+    uint16_t TYPICAL_DC_WIPER_RESISTANCE = WiperResistanceValue_From_Interpolation(V_DD);
     float N_raw = (R_WB_from_Desidered_Gain - TYPICAL_DC_WIPER_RESISTANCE) / R_S;
     // Round the value to the nearest integer value.
     uint8_t N = (uint8_t)roundf(N_raw);
@@ -394,7 +411,6 @@ static void mytask(void *param)
     // SETTING the reference voltaage for the DAC using i2c
     uint16_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
     uint8_t DAC_Write[2] = {0, 0};
-
     DAC_Write[1] = ValueforDAC & 0x00FF;
     DAC_Write[0] = (ValueforDAC >> 8) & 0x00FF;
     DEBUG_PRINT("Value for DAC: %d\n", ValueforDAC);
@@ -404,11 +420,13 @@ static void mytask(void *param)
     DEBUG_PRINT("DAC Write result: %d\n", dacWriteResult);
 
     // Potentiometer Setup
-    uint8_t Potentiometer_Value = Potentiometer_Value_To_Set(100);
+    uint8_t Potentiometer_Value = Potentiometer_Value_To_Set(GainValue);
     DEBUG_PRINT("Potentiometer Value to set: %d\n", Potentiometer_Value);
     uint8_t result_read_potentiometer = i2cdevWrite(I2C1_DEV, POTENTIOMETER_ADDR, 1, &Potentiometer_Value);
     vTaskDelay(M2T(POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET));
     DEBUG_PRINT("Potentiometer Write result: %d\n", result_read_potentiometer);
+    GainValue_Setted = GainValue;
+    GainValue = 0;
 
     // reading the value of the potentiometer
     uint8_t PotentiometerReadValue = 10;
@@ -447,8 +465,19 @@ static void mytask(void *param)
 
     while (1)
     {
-        // DEBUG_PRINT("While\n");
-        if (ADC_Done == 1)
+        if (GainValue > 0)
+        {
+            DEBUG_PRINT("UPDATE FROM USER ON GAIN!!!!\n");
+            // Potentiometer Setup
+            uint8_t Potentiometer_Value = Potentiometer_Value_To_Set(GainValue);
+            DEBUG_PRINT("Potentiometer Value to set: %d\n", Potentiometer_Value);
+            uint8_t result_read_potentiometer = i2cdevWrite(I2C1_DEV, POTENTIOMETER_ADDR, 1, &Potentiometer_Value);
+            vTaskDelay(M2T(POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET));
+            DEBUG_PRINT("Potentiometer Write result: %d\n", result_read_potentiometer);
+            GainValue_Setted = GainValue;
+            GainValue = 0;
+        }
+        if (ADC_Done == 1 && GainValue == 0)
         {
 
             performFFT(DMA_Buffer, fft_input, flattopCorrectionFactor);
@@ -522,7 +551,7 @@ static void mytask(void *param)
 
             // Se si bloccal l'adc si puo' usare questo
             // non ha senso!!!
-            // ADC_Done = 1;
+            ADC_Done = 1;
             DEBUG_PRINT("First Value: %d\n", ADC_Done);
             // ma funziona cosi, non so poi come siano i dati
         }
@@ -592,3 +621,11 @@ PARAM_ADD(PARAM_FLOAT, std_magn, &MagneticStandardDeviation)
 // PARAM_ADD_CORE(PARAM_UINT16, Grigio_Index, &Grigio_Idx)
 // PARAM_ADD_CORE(PARAM_UINT16, Rosso_Index, &Rosso_Idx)
 PARAM_GROUP_STOP(MAGNETIC_Params)
+
+//// POTENTIOMETER
+LOG_GROUP_START(Potentiometer_g_L)
+LOG_ADD(LOG_FLOAT, GpS, &GainValue_Setted)
+LOG_GROUP_STOP(Potentiometer_G_L)
+PARAM_GROUP_START(Potentiometer_G_P)
+PARAM_ADD(PARAM_FLOAT, G_pot, &GainValue)
+PARAM_GROUP_STOP(Potentiometer_G_P)
