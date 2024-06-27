@@ -80,7 +80,7 @@ uint32_t fft_length = FFT_SIZE;
 #define POTENTIOMETER_FULL_SCALE_RAB 50E3                          // 50 kOhm
 #define POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET 100
 float32_t GainValue_Setted = 0;
-float GainValue = 10;
+float GainValue = 100;
 
 // ------ Anchors Parameters -------
 // Resonance Freqs Anchors in Hz
@@ -88,31 +88,31 @@ float GainValue = 10;
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-float Nero_Position[] = {-0.5, -0.5, 0};
+float Nero_Position[] = {-0.35, -0.25, 0};
 #define Nero_Id 0
 
 #define GialloResFreq 203e3
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-float Giallo_Position[] = {+0.5, -0.5, 0};
+float Giallo_Position[] = {+0.35, -0.25, 0};
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-float Grigio_Position[] = {+0.5, +0.5, 0};
+float Grigio_Position[] = {+0.35, +0.25, 0};
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-float Rosso_Position[] = {-0.5, +0.5, 0};
+float Rosso_Position[] = {-0.35, +0.25, 0};
 #define Rosso_Id 3
 
-#define Default_MagneticStandardDeviation 0.001
+#define Default_MagneticStandardDeviation 0.01
 volatile float32_t MagneticStandardDeviation = Default_MagneticStandardDeviation;
 // -------  Debug variables -------
 // ADC
@@ -274,42 +274,42 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
 
     // Calculate the maximum value and its index around NeroIdx
     uint32_t maxindex;
-    arm_max_f32(&fft_magnitude[NeroIdx - 1], 3, &NeroAmpl, &maxindex);
-    maxindex += NeroIdx - 1;
+    arm_max_f32(&fft_magnitude[NeroIdx - 2], 4, &NeroAmpl, &maxindex);
+    // maxindex += NeroIdx - 1;
 
     NeroAmpl = NeroAmpl * flattopCorrectionFactor;
     // NeroAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
-    // Debugging
-    if (debug_idx < 2)
-    {
-        NeroAmpl_steps[debug_idx] = NeroAmpl;
-        debug_idx++;
-    }
-    if (NeroAmpl_steps[0] == NeroAmpl_steps[1])
-    {
-        DEBUG_PRINT("NeroAmpl: %f\n", (double)NeroAmpl);
-    }
-    if (debug_idx == 1)
-    {
-        debug_idx = 0;
-    }
+    // // Debugging
+    // if (debug_idx < 2)
+    // {
+    //     NeroAmpl_steps[debug_idx] = NeroAmpl;
+    //     debug_idx++;
+    // }
+    // if (NeroAmpl_steps[0] == NeroAmpl_steps[1])
+    // {
+    //     DEBUG_PRINT("NeroAmpl: %f\n", (double)NeroAmpl);
+    // }
+    // if (debug_idx == 1)
+    // {
+    //     debug_idx = 0;
+    // }
 
     // Calculate the maximum value and its index around GialloIdx
     arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &GialloAmpl, &maxindex);
-    maxindex += GialloIdx - 1;
+    // maxindex += GialloIdx - 1;
     GialloAmpl = GialloAmpl * flattopCorrectionFactor;
     // GialloAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around GrigioIdx
     arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &GrigioAmpl, &maxindex);
-    maxindex += GrigioIdx - 1;
+    // maxindex += GrigioIdx - 1;
     GrigioAmpl = GrigioAmpl * flattopCorrectionFactor;
     // GrigioAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around RossoIdx
     arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &RossoAmpl, &maxindex);
-    maxindex += RossoIdx - 1;
+    // maxindex += RossoIdx - 1;
     RossoAmpl = RossoAmpl * flattopCorrectionFactor;
     // RossoAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
@@ -462,6 +462,7 @@ static void mytask(void *param)
         sum += flattop_2048_lut[i];
     }
     float32_t flattopCorrectionFactor = ARRAY_SIZE / sum;
+    // float32_t flattopCorrectionFactor = 1;
 
     while (1)
     {
