@@ -34,10 +34,10 @@ IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
 #define ADC_LEVELS 4096
 //  CONTROLLA se è 3 o 3.0
 #define ADC_MAX_VOLTAGE 3.0f
-#define PCLK2 84e6
-#define ADC_PRESCALER 6
+#define PCLK2 84e6f
+#define ADC_PRESCALER 6.0f
 // 12 from bit and 15 from the register value 12+15 = 27
-#define ADC_Full_Sampling_Time 27
+#define ADC_Full_Sampling_Time 27.0f
 #define Fc_ADC (PCLK2 / ADC_PRESCALER / ADC_Full_Sampling_Time)
 
 // #define DMA_IRQ DMA2_Stream0_IRQn
@@ -54,8 +54,8 @@ float32_t fft_input[FFT_SIZE];
 float32_t fft_output[FFT_SIZE];
 float32_t fft_magnitude[FFT_SIZE / 2];
 arm_rfft_fast_instance_f32 fft_instance;
-uint32_t fft_length = FFT_SIZE;
-#define BIN_SIZE (Fc_ADC / FFT_SIZE)
+uint16_t fft_length = FFT_SIZE;
+#define BIN_SIZE (int)(Fc_ADC / FFT_SIZE)
 
 // DAC Reference Voltage Params
 #define V_REF_CRAZYFLIE 3.0f
@@ -80,7 +80,7 @@ uint32_t fft_length = FFT_SIZE;
 #define POTENTIOMETER_FULL_SCALE_RAB 50E3                          // 50 kOhm
 #define POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET 100
 float32_t GainValue_Setted = 0;
-float GainValue = 100;
+float GainValue = 10;
 
 // ------ Anchors Parameters -------
 // Resonance Freqs Anchors in Hz
@@ -88,31 +88,31 @@ float GainValue = 100;
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-float Nero_Position[] = {-0.35, -0.25, 0};
+float Nero_Position[] = {-0.50, -0.25, 0};
 #define Nero_Id 0
 
 #define GialloResFreq 203e3
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-float Giallo_Position[] = {+0.35, -0.25, 0};
+float Giallo_Position[] = {+0.50, -0.25, 0};
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-float Grigio_Position[] = {+0.35, +0.25, 0};
+float Grigio_Position[] = {+0.50, +0.25, 0};
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-float Rosso_Position[] = {-0.35, +0.25, 0};
+float Rosso_Position[] = {-0.50, +0.25, 0};
 #define Rosso_Id 3
 
-#define Default_MagneticStandardDeviation 0.01
+#define Default_MagneticStandardDeviation 0.0001f
 volatile float32_t MagneticStandardDeviation = Default_MagneticStandardDeviation;
 // -------  Debug variables -------
 // ADC
@@ -132,16 +132,12 @@ volatile float32_t Rosso_distance = 0;
 
 // FFT
 volatile uint16_t bin_size = BIN_SIZE;
-volatile uint32_t Fc = Fc_ADC;
+volatile float Fc = Fc_ADC;
 volatile uint16_t fft_size = FFT_SIZE;
-volatile uint16_t Nero_Idx = NeroIdx; // Assign the constant value directly to the variable
+volatile uint16_t Nero_Idx = NeroIdx;
 volatile uint16_t Giallo_Idx = GialloIdx;
 volatile uint16_t Grigio_Idx = GrigioIdx;
 volatile uint16_t Rosso_Idx = RossoIdx;
-
-// Brek sttuff debugging
-float NeroAmpl_steps[2] = {0, 0};
-int debug_idx = 0;
 
 // -------------------- DAC Functions -------------------------------
 uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
@@ -250,11 +246,14 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     for (p = 0; p < FFT_SIZE; p++)
     {
         // Fattore di scala della conversione della funzione, guarda doc per capire
-        Output_buffer_pointer[p] = Output_buffer_pointer[p] * 2147483648;
+        Output_buffer_pointer[p] = Output_buffer_pointer[p] * 2147483648.0f;
 
         // ADCLevelsToVolt
         Output_buffer_pointer[p] = Output_buffer_pointer[p] * (ADC_MAX_VOLTAGE / ADC_LEVELS);
     }
+
+    // 2.4 Voltages max
+
     // applico la finestratura flattop
     arm_mult_f32(Output_buffer_pointer, (float32_t *)flattop_2048_lut, Output_buffer_pointer, FFT_SIZE);
 
@@ -277,41 +276,34 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     arm_max_f32(&fft_magnitude[NeroIdx - 2], 4, &NeroAmpl, &maxindex);
     // maxindex += NeroIdx - 1;
 
-    NeroAmpl = NeroAmpl * flattopCorrectionFactor;
+    // *2 is for the fft range
+    NeroAmpl = NeroAmpl * flattopCorrectionFactor * 2.0f;
     // NeroAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
-
-    // // Debugging
-    // if (debug_idx < 2)
-    // {
-    //     NeroAmpl_steps[debug_idx] = NeroAmpl;
-    //     debug_idx++;
-    // }
-    // if (NeroAmpl_steps[0] == NeroAmpl_steps[1])
-    // {
-    //     DEBUG_PRINT("NeroAmpl: %f\n", (double)NeroAmpl);
-    // }
-    // if (debug_idx == 1)
-    // {
-    //     debug_idx = 0;
-    // }
 
     // Calculate the maximum value and its index around GialloIdx
     arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &GialloAmpl, &maxindex);
     // maxindex += GialloIdx - 1;
-    GialloAmpl = GialloAmpl * flattopCorrectionFactor;
+    GialloAmpl = GialloAmpl * flattopCorrectionFactor * 2.0f;
     // GialloAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around GrigioIdx
     arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &GrigioAmpl, &maxindex);
     // maxindex += GrigioIdx - 1;
-    GrigioAmpl = GrigioAmpl * flattopCorrectionFactor;
+    GrigioAmpl = GrigioAmpl * flattopCorrectionFactor * 2.0f;
     // GrigioAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around RossoIdx
     arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &RossoAmpl, &maxindex);
     // maxindex += RossoIdx - 1;
-    RossoAmpl = RossoAmpl * flattopCorrectionFactor;
+    RossoAmpl = RossoAmpl * flattopCorrectionFactor * 2.0f;
     // RossoAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
+
+    // check if the ADC is saturating
+    // if (NeroAmpl == 2.4 || GialloAmpl == 0 || GrigioAmpl == 0 || RossoAmpl == 0)
+    // {
+    //     DEBUG_PRINT("ADC is saturating\n");
+    //     return;
+    // }
 
     // --------------------------------- 2D MEASURMENT MODEL - DISTANCE COMPUTATION ---------------------------------
 
@@ -462,6 +454,7 @@ static void mytask(void *param)
         sum += flattop_2048_lut[i];
     }
     float32_t flattopCorrectionFactor = ARRAY_SIZE / sum;
+    DEBUG_PRINT("Flattop Correction Factor: %f\n", flattopCorrectionFactor);
     // float32_t flattopCorrectionFactor = 1;
 
     while (1)
@@ -482,8 +475,8 @@ static void mytask(void *param)
         {
 
             performFFT(DMA_Buffer, fft_input, flattopCorrectionFactor);
-            firstValue = DMA_Buffer[1000];
-            FirstVolt = firstValue * ADC_MAX_VOLTAGE / ADC_LEVELS;
+            // firstValue = DMA_Buffer[1000];
+            // FirstVolt = firstValue * ADC_MAX_VOLTAGE / ADC_LEVELS;
 
             // DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
             DMA_Cmd(DMA_Stream, ENABLE);

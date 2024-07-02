@@ -1,64 +1,73 @@
 #include "math.h"
 #include "mm_magnetic_distance.h"
 #include "log.h"
-#include "Volts_500_4_lut.h"
 #include "debug.h"
 #include "param.h"
+#include "stabilizer_types.h"
+#include "estimator.h"
+#include "estimator_kalman.h"
 #include <stdlib.h>
 
-#define G_INA 1000.0f
+#define G_INA 100.0f
 #define RAY 0.019f
 #define N_WOUNDS 5.0f
 #define COIL_SURFACE (RAY * RAY * PI)
 #define CURRENT 0.5f
-#define MU_0 1.25663706e-6f
+#define MU_0 1.25663706212e-06f
+#define PI 3.14159265359f
 
-#define start_timer() *((volatile uint32_t *)0xE0001000) = 0x40000001 // Enable CYCCNT register
-#define stop_timer() *((volatile uint32_t *)0xE0001000) = 0x40000000  // Disable CYCCNT register
-#define get_timer() *((volatile uint32_t *)0xE0001004)
+// #define start_timer() *((volatile uint32_t *)0xE0001000) = 0x40000001 // Enable CYCCNT register
+// #define stop_timer() *((volatile uint32_t *)0xE0001000) = 0x40000000  // Disable CYCCNT register
+// #define get_timer() *((volatile uint32_t *)0xE0001004)
 
-uint32_t it1, it2; // start and stop flag
-float32_t MeasuredVoltages_calibrated[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-float32_t MeasuredVoltages_raw[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-float32_t PredictedVoltages[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-float32_t Derivative_x[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-float32_t Derivative_y[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-float32_t Derivative_z[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-float32_t B[4][3] = {{0.0f, 0.0f, 0.0f},
-                     {0.0f, 0.0f, 0.0f},
-                     {0.0f, 0.0f, 0.0f},
-                     {0.0f, 0.0f, 0.0f}};
-float32_t E_1 = 0.0f;
-float32_t E_2 = 0.0f;
-float32_t E_3 = 0.0f;
-float32_t E_4 = 0.0f;
+// logVarId_t gainID =  logGetVarId("Potentiometer_G_P", "GainValue");
 
-float32_t T_pre_x = 0.0f;
-float32_t T_pre_y = 0.0f;
-float32_t T_pre_z = 0.0f;
+// #define G_INA logGetFloat(GainID)
 
-volatile float32_t default_CG_a1 = 1.3f; //  NERO
-volatile float32_t CG_a1 = 1.0f;         //  NERO
+// uint32_t it1, it2; // start and stop flag
+float MeasuredVoltages_calibrated[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float MeasuredVoltages_raw[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float PredictedVoltages[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float Derivative_x[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float Derivative_y[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float Derivative_z[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+float B[4][3] = {{0.0f, 0.0f, 0.0f},
+                 {0.0f, 0.0f, 0.0f},
+                 {0.0f, 0.0f, 0.0f},
+                 {0.0f, 0.0f, 0.0f}};
+float E_1 = 0.0f;
+float E_2 = 0.0f;
+float E_3 = 0.0f;
+float E_4 = 0.0f;
 
-volatile float32_t default_CG_a2 = 0.635f; // GIALLO
-volatile float32_t CG_a2 = 1.0f;           // GIALLO
+float T_pre_x = 0.0f;
+float T_pre_y = 0.0f;
+float T_pre_z = 0.0f;
 
-volatile float32_t default_CG_a3 = 3.5f; // GRIGIO
-volatile float32_t CG_a3 = 1.0f;         // GRIGIO
+float T_orientation[3] = {0.0f, 0.0f, 0.0f};
 
-volatile float32_t default_CG_a4 = 7.5f; // ROSSO
-volatile float32_t CG_a4 = 1.0f;         // ROSSO
+volatile float default_CG_a1 = 1.3f; //  NERO
+volatile float CG_a1 = 1.0f;         //  NERO
 
-float32_t CalibrationRapport_anchor1 = 1.0f;
-float32_t CalibrationRapport_anchor2 = 1.0f;
-float32_t CalibrationRapport_anchor3 = 1.0f;
-float32_t CalibrationRapport_anchor4 = 1.0f;
+volatile float default_CG_a2 = 0.635f; // GIALLO
+volatile float CG_a2 = 1.0f;           // GIALLO
+
+volatile float default_CG_a3 = 3.5f; // GRIGIO
+volatile float CG_a3 = 1.0f;         // GRIGIO
+
+volatile float default_CG_a4 = 7.5f; // ROSSO
+volatile float CG_a4 = 1.0f;         // ROSSO
+
+float CalibrationRapport_anchor1 = 1.0f;
+float CalibrationRapport_anchor2 = 1.0f;
+float CalibrationRapport_anchor3 = 1.0f;
+float CalibrationRapport_anchor4 = 1.0f;
 
 volatile uint32_t pos_idx = 0;
 
 #define CALIBRATION_TIC_VALUE 100.0f // Replace with the desired constant value
 volatile uint32_t currentCalibrationTick = 0;
-static float32_t calibrationMean[4][4] = {};
+static float calibrationMean[4][4] = {};
 
 // DEBUG FUNCTION
 double generate_gaussian_noise(double mu, double sigma)
@@ -98,13 +107,13 @@ float dot_product(float *a, float *b, int length)
 
 float euclidean_distance(float *a, float *b, int length)
 {
-    float sum = 0.0;
+    float sum = 0.0f;
     for (int i = 0; i < length; i++)
     {
         float diff = a[i] - b[i];
         sum += diff * diff;
     }
-    return (float)sqrtf(sum);
+    return sqrtf(sum);
 }
 
 void getversor(float *a, float *b, float *u, int length)
@@ -632,11 +641,11 @@ void get_B_field_for_a_Anchor(float *anchor_pos,
 
     float dot_product_B_temp = dot_product(magnetic_dipole_moment_tx, tx_rx_versor, 3);
 
-    float constant_Bfield_constant_1 = (MU_0 / (4 * PI)) / powf(tx_rx_distance, 3);
+    float constant_Bfield_constant_1 = (MU_0 / (4.0f * PI)) / powf(tx_rx_distance, 3);
     float B_temp[3] = {
-        constant_Bfield_constant_1 * (3 * dot_product_B_temp * tx_rx_versor[0] - magnetic_dipole_moment_tx[0]),
-        constant_Bfield_constant_1 * (3 * dot_product_B_temp * tx_rx_versor[1] - magnetic_dipole_moment_tx[1]),
-        constant_Bfield_constant_1 * (3 * dot_product_B_temp * tx_rx_versor[2] - magnetic_dipole_moment_tx[2])};
+        constant_Bfield_constant_1 * (3.0f * dot_product_B_temp * tx_rx_versor[0] - magnetic_dipole_moment_tx[0]),
+        constant_Bfield_constant_1 * (3.0f * dot_product_B_temp * tx_rx_versor[1] - magnetic_dipole_moment_tx[1]),
+        constant_Bfield_constant_1 * (3.0f * dot_product_B_temp * tx_rx_versor[2] - magnetic_dipole_moment_tx[2])};
 
     // float magnetic_dipole_moment_tx_magnitude = euclidean_distance(magnetic_dipole_moment_tx, magnetic_dipole_moment_tx, 3);
     // compute the norm of the magnetic dipole moment
@@ -644,24 +653,23 @@ void get_B_field_for_a_Anchor(float *anchor_pos,
     //                                                   magnetic_dipole_moment_tx[1] * magnetic_dipole_moment_tx[1] +
     //                                                   magnetic_dipole_moment_tx[2] * magnetic_dipole_moment_tx[2]);
 
-    // normalizing the B field
+    // normalizing the B field (NOT NEEDED!!!!)
     B_field[0] = B_temp[0]; // * magnetic_dipole_moment_tx_magnitude;
     B_field[1] = B_temp[1]; // * magnetic_dipole_moment_tx_magnitude;
     B_field[2] = B_temp[2]; // * magnetic_dipole_moment_tx_magnitude;
 }
 
-float V_from_B(float *B_field, float *rx_versor, int resonanceFreq)
+float V_from_B(float *B_field, float *rx_versor, float resonanceFreq)
 {
-
     float dot_product_V = dot_product(B_field, rx_versor, 3);
 
-    float V = G_INA * fabsf(2 * PI * resonanceFreq * PI * RAY * RAY * N_WOUNDS * dot_product_V);
+    float V = G_INA * fabsf(2.0f * PI * resonanceFreq * PI * RAY * RAY * N_WOUNDS * dot_product_V);
     return V;
 }
 
-void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
-                              voltMeasurement_t *voltAnchor)
+void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
+    // DEBUG_PRINT("kalmanCoreUpdateWithVolt\n");
 
     float B_field_vector_1[3];
     float B_field_vector_2[3];
@@ -691,10 +699,10 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
         {
             currentCalibrationTick = currentCalibrationTick + 1;
 
-            float32_t meanData_a1 = calibrationMean[0][0] / CALIBRATION_TIC_VALUE;
-            float32_t meanData_a2 = calibrationMean[1][1] / CALIBRATION_TIC_VALUE;
-            float32_t meanData_a3 = calibrationMean[2][2] / CALIBRATION_TIC_VALUE;
-            float32_t meanData_a4 = calibrationMean[3][3] / CALIBRATION_TIC_VALUE;
+            float meanData_a1 = calibrationMean[0][0] / CALIBRATION_TIC_VALUE;
+            float meanData_a2 = calibrationMean[1][1] / CALIBRATION_TIC_VALUE;
+            float meanData_a3 = calibrationMean[2][2] / CALIBRATION_TIC_VALUE;
+            float meanData_a4 = calibrationMean[3][3] / CALIBRATION_TIC_VALUE;
 
             DEBUG_PRINT("calibration data acquired!!\n");
 
@@ -708,8 +716,32 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
             T_pre_x = tag_pos_predicted_calibrated[0];
             T_pre_y = tag_pos_predicted_calibrated[1];
             T_pre_z = tag_pos_predicted_calibrated[2];
+
             // sarebbe il prodotto tra la matrice di rotazione e il versore  [0,0,1] iniziale
-            float tag_or_versor_calibrated[3] = {this->R[0][2], this->R[1][2], this->R[2][2]};
+            // NON CAMBIA MAI!@!!!!!!!
+            // float tag_or_versor_calibrated[3] = {this->R[0][2], this->R[1][2], this->R[2][2]};
+
+            float RotationMatrix[3][3];
+            // DEBUG_PRINT("RotationMatrix[0][0] = %f\n", (double)this->R[0][0]);
+            // DEBUG_PRINT("RotationMatrix[0][1] = %f\n", (double)this->R[0][1]);
+            // DEBUG_PRINT("RotationMatrix[0][2] = %f\n", (double)this->R[0][2]);
+            // DEBUG_PRINT("RotationMatrix[1][0] = %f\n", (double)this->R[1][0]);
+            // DEBUG_PRINT("RotationMatrix[1][1] = %f\n", (double)this->R[1][1]);
+            // DEBUG_PRINT("RotationMatrix[1][2] = %f\n", (double)this->R[1][2]);
+            // DEBUG_PRINT("RotationMatrix[2][0] = %f\n", RotationMatrix[2][0]);
+            // DEBUG_PRINT("RotationMatrix[2][1] = %f\n", RotationMatrix[2][1]);
+            // DEBUG_PRINT("RotationMatrix[2][2] = %f\n", RotationMatrix[2][2]);
+
+            estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
+            float tag_or_versor_calibrated[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
+            // logVarId_t idYaw = logGetVarId("stateEstimate", "yaw");
+            // float yaw = 0.0f;
+            // yaw = logGetFloat(idYaw);
+
+            T_orientation[0] = tag_or_versor_calibrated[0];
+            T_orientation[1] = tag_or_versor_calibrated[1];
+            T_orientation[2] = tag_or_versor_calibrated[2];
+
             float anchor_1_pose[3] = {voltAnchor->x[0], voltAnchor->y[0], voltAnchor->z[0]};
             float anchor_2_pose[3] = {voltAnchor->x[1], voltAnchor->y[1], voltAnchor->z[1]};
             float anchor_3_pose[3] = {voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2]};
@@ -755,8 +787,8 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
         }
         else
         {
-            start_timer();     // start the timer.
-            it1 = get_timer(); // store current cycle-count in a local
+            // start_timer();     // start the timer.
+            // it1 = get_timer(); // store current cycle-count in a local
 
             // computing the B field for each of the 4 anchors
             float tag_pos_predicted[3] = {this->S[KC_STATE_X], this->S[KC_STATE_Y], this->S[KC_STATE_Z]};
@@ -766,8 +798,16 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
             T_pre_z = tag_pos_predicted[2];
 
             // sarebbe il prodotto tra la matrice di rotazione e il versore  [0,0,1] iniziale
-            float tag_or_versor[3] = {this->R[0][2], this->R[1][2], this->R[2][2]};
+            // float tag_or_versor[3] = {this->R[0][2], this->R[1][2], this->R[2][2]};
 
+            float RotationMatrix[3][3];
+
+            estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
+            float tag_or_versor[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
+
+            T_orientation[0] = tag_or_versor[0];
+            T_orientation[1] = tag_or_versor[1];
+            T_orientation[2] = tag_or_versor[2];
             // // SEMBRA OK [0,0,1]
             // // if (pos_idx % 10 == 0)
             // // {
@@ -781,7 +821,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
             float anchor_3_pose[3] = {voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2]};
             float anchor_4_pose[3] = {voltAnchor->x[3], voltAnchor->y[3], voltAnchor->z[3]};
 
-            // // ########################################### DEBUG
+            // ########################################### DEBUG
             // anchor_1_pose[0] = 0.5;
             // anchor_1_pose[1] = 0.5;
             // anchor_1_pose[2] = 0;
@@ -917,21 +957,29 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
                 voltAnchor->resonanceFrequency[0], voltAnchor->resonanceFrequency[1], voltAnchor->resonanceFrequency[2], voltAnchor->resonanceFrequency[3],
                 V_rx_derivative_z);
 
-            it2 = get_timer() - it1; // Derive the cycle-count difference
-            stop_timer();
+            // it2 = get_timer() - it1; // Derive the cycle-count difference
+            // stop_timer();
+
+            // Debugging stuff
+            for (int i = 0; i < 4; i++)
+            {
+                Derivative_x[i] = V_rx_derivative_x[i];
+                Derivative_y[i] = V_rx_derivative_y[i];
+                Derivative_z[i] = V_rx_derivative_z[i];
+            }
 
             // create the matrix to update the kalman matrix
             float h_1[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_1 = {1, KC_STATE_DIM, h_1};
             h_1[KC_STATE_X] = V_rx_derivative_x[1];
             h_1[KC_STATE_Y] = V_rx_derivative_y[1];
-            h_1[KC_STATE_Z] = V_rx_derivative_z[1];
+            // h_1[KC_STATE_Z] = V_rx_derivative_z[1];
 
             float h_2[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_2 = {1, KC_STATE_DIM, h_2};
             h_2[KC_STATE_X] = V_rx_derivative_x[2];
             h_2[KC_STATE_Y] = V_rx_derivative_y[2];
-            h_2[KC_STATE_Z] = V_rx_derivative_z[2];
+            // h_2[KC_STATE_Z] = V_rx_derivative_z[2];
 
             float h_3[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_3 = {1, KC_STATE_DIM, h_3};
@@ -960,10 +1008,10 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
             CalibrationRapport_anchor4 = MeasuredVoltages_calibrated[3] / PredictedVoltages[3];
 
             // Potrebbe essere troppo piccolo l'errore. o le stime troppo diverse?!?!?!
-            kalmanCoreScalarUpdate(this, &H_1, error_anchor1, voltAnchor->stdDev[0]);
-            kalmanCoreScalarUpdate(this, &H_2, error_anchor2, voltAnchor->stdDev[1]);
-            kalmanCoreScalarUpdate(this, &H_3, error_anchor3, voltAnchor->stdDev[2]);
-            kalmanCoreScalarUpdate(this, &H_4, error_anchor4, voltAnchor->stdDev[3]);
+            // kalmanCoreScalarUpdate(this, &H_1, error_anchor1, voltAnchor->stdDev[0]);
+            // kalmanCoreScalarUpdate(this, &H_2, error_anchor2, voltAnchor->stdDev[1]);
+            // kalmanCoreScalarUpdate(this, &H_3, error_anchor3, voltAnchor->stdDev[2]);
+            // kalmanCoreScalarUpdate(this, &H_4, error_anchor4, voltAnchor->stdDev[3]);
         }
     }
 }
@@ -971,6 +1019,19 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this,
 LOG_GROUP_START(Dipole_Model)
 
 // LOG_ADD(LOG_UINT32, CPUCycle, &it2)
+
+LOG_ADD(LOG_FLOAT, D_x_0, &Derivative_x[0])
+LOG_ADD(LOG_FLOAT, D_x_1, &Derivative_x[1])
+LOG_ADD(LOG_FLOAT, D_x_2, &Derivative_x[2])
+LOG_ADD(LOG_FLOAT, D_x_3, &Derivative_x[3])
+LOG_ADD(LOG_FLOAT, D_y_0, &Derivative_y[0])
+LOG_ADD(LOG_FLOAT, D_y_1, &Derivative_y[1])
+LOG_ADD(LOG_FLOAT, D_y_2, &Derivative_y[2])
+LOG_ADD(LOG_FLOAT, D_y_3, &Derivative_y[3])
+LOG_ADD(LOG_FLOAT, D_z_0, &Derivative_z[0])
+LOG_ADD(LOG_FLOAT, D_z_1, &Derivative_z[1])
+LOG_ADD(LOG_FLOAT, D_z_2, &Derivative_z[2])
+LOG_ADD(LOG_FLOAT, D_z_3, &Derivative_z[3])
 
 LOG_ADD(LOG_FLOAT, CG_A1, &CG_a1)
 LOG_ADD(LOG_FLOAT, CG_A2, &CG_a2)
@@ -985,6 +1046,10 @@ LOG_ADD(LOG_FLOAT, C_R_4, &CalibrationRapport_anchor4)
 LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
 LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
 LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
+
+LOG_ADD(LOG_FLOAT, T_or_0, &T_orientation[0])
+LOG_ADD(LOG_FLOAT, T_or_1, &T_orientation[1])
+LOG_ADD(LOG_FLOAT, T_or_2, &T_orientation[2])
 
 LOG_ADD(LOG_FLOAT, Er_1, &E_1)
 LOG_ADD(LOG_FLOAT, Er_2, &E_2)
@@ -1009,22 +1074,18 @@ LOG_ADD(LOG_FLOAT, P_V_3, &PredictedVoltages[3])
 LOG_ADD(LOG_FLOAT, B_0_0, &B[0][0])
 LOG_ADD(LOG_FLOAT, B_0_1, &B[0][1])
 LOG_ADD(LOG_FLOAT, B_0_2, &B[0][2])
-LOG_ADD(LOG_FLOAT, B_0_3, &B[0][3])
 
 LOG_ADD(LOG_FLOAT, B_1_0, &B[1][0])
 LOG_ADD(LOG_FLOAT, B_1_1, &B[1][1])
 LOG_ADD(LOG_FLOAT, B_1_2, &B[1][2])
-LOG_ADD(LOG_FLOAT, B_1_3, &B[1][3])
 
 LOG_ADD(LOG_FLOAT, B_2_0, &B[2][0])
 LOG_ADD(LOG_FLOAT, B_2_1, &B[2][1])
 LOG_ADD(LOG_FLOAT, B_2_2, &B[2][2])
-LOG_ADD(LOG_FLOAT, B_2_3, &B[2][3])
 
 LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
 LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
 LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
-LOG_ADD(LOG_FLOAT, B_3_3, &B[3][3])
 
 LOG_GROUP_STOP(Dipole_Model)
 
