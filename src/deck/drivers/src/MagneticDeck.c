@@ -115,9 +115,6 @@ float Rosso_Position[] = {-0.50, +0.25, 0};
 #define Default_MagneticStandardDeviation 0.0001f
 volatile float32_t MagneticStandardDeviation = Default_MagneticStandardDeviation;
 // -------  Debug variables -------
-// ADC
-volatile uint16_t firstValue = 0;
-volatile uint16_t FirstVolt = 0;
 
 float32_t NeroAmpl = 0;
 float32_t GialloAmpl = 0;
@@ -163,7 +160,7 @@ uint16_t WiperResistanceValue_From_Interpolation(float Vdd)
 {
     // https://ww1.microchip.com/downloads/aemDocuments/documents/OTH/ProductDocuments/DataSheets/22147a.pdf
 
-    float R_WB = ((5.5 - Vdd) / (5.5 - 2.7)) * RW_2_7V + ((Vdd - 2.7) / (5.5 - 2.7)) * RW_5_5V;
+    float R_WB = ((5.5f - Vdd) / (5.5f - 2.7f)) * RW_2_7V + ((Vdd - 2.7f) / (5.5f - 2.7f)) * RW_5_5V;
 
     uint16_t D = (uint16_t)roundf(R_WB);
     return R_WB;
@@ -252,7 +249,7 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
         Output_buffer_pointer[p] = Output_buffer_pointer[p] * (ADC_MAX_VOLTAGE / ADC_LEVELS);
     }
 
-    // 2.4 Voltages max
+    // TODO: 2.4 Voltages max voltages before saturation, so if you see 2.4V in the output, then change the gain. Also viceversa, to be tested the mimumum value
 
     // applico la finestratura flattop
     arm_mult_f32(Output_buffer_pointer, (float32_t *)flattop_2048_lut, Output_buffer_pointer, FFT_SIZE);
@@ -308,10 +305,10 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     // --------------------------------- 2D MEASURMENT MODEL - DISTANCE COMPUTATION ---------------------------------
 
     // compute the the distances from the amplitude of each anchor
-    Nero_distance = pow(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
-    Giallo_distance = pow(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
-    Grigio_distance = pow(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
-    Rosso_distance = pow(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
+    Nero_distance = powf(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
+    Giallo_distance = powf(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
+    Grigio_distance = powf(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
+    Rosso_distance = powf(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
 
     // Nero
     distanceMeasurement_t dist_Nero;
