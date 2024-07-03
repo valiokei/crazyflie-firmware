@@ -44,19 +44,23 @@ float T_pre_x = 0.0f;
 float T_pre_y = 0.0f;
 float T_pre_z = 0.0f;
 
+float T_pre_x_fk = 0.0f;
+float T_pre_y_fk = 0.0f;
+float T_pre_z_fk = 0.0f;
+
 float T_orientation[3] = {0.0f, 0.0f, 0.0f};
 
-volatile float default_CG_a1 = 1.3f; //  NERO
-volatile float CG_a1 = 1.0f;         //  NERO
+float default_CG_a1 = 1.3f; //  NERO
+float CG_a1 = 1.0f;         //  NERO
 
-volatile float default_CG_a2 = 0.635f; // GIALLO
-volatile float CG_a2 = 1.0f;           // GIALLO
+float default_CG_a2 = 0.635f; // GIALLO
+float CG_a2 = 1.0f;           // GIALLO
 
-volatile float default_CG_a3 = 3.5f; // GRIGIO
-volatile float CG_a3 = 1.0f;         // GRIGIO
+float default_CG_a3 = 3.5f; // GRIGIO
+float CG_a3 = 1.0f;         // GRIGIO
 
-volatile float default_CG_a4 = 7.5f; // ROSSO
-volatile float CG_a4 = 1.0f;         // ROSSO
+float default_CG_a4 = 7.5f; // ROSSO
+float CG_a4 = 1.0f;         // ROSSO
 
 float CalibrationRapport_anchor1 = 1.0f;
 float CalibrationRapport_anchor2 = 1.0f;
@@ -65,9 +69,23 @@ float CalibrationRapport_anchor4 = 1.0f;
 
 volatile uint32_t pos_idx = 0;
 
+// ----------------- Calibration -----------------
 #define CALIBRATION_TIC_VALUE 100.0f // Replace with the desired constant value
 volatile uint32_t currentCalibrationTick = 0;
 static float calibrationMean[4][4] = {};
+
+// adaptive std on Measured volts
+#define window_size 25
+int number_of_samples_for_DynamicStd = 0;
+float Nero_std_data[window_size];
+float Giallo_std_data[window_size];
+float Grigio_std_data[window_size];
+float Rosso_std_data[window_size];
+
+float Nero_std = 0;
+float Giallo_std = 0;
+float Grigio_std = 0;
+float Rosso_std = 0;
 
 // DEBUG FUNCTION
 double generate_gaussian_noise(double mu, double sigma)
@@ -94,6 +112,8 @@ double generate_gaussian_noise(double mu, double sigma)
     z1 = sqrt(-2.0 * log(u1)) * sin(two_pi * u2);
     return z0 * sigma + mu;
 }
+
+// WORKING FUNCTIONS
 
 float dot_product(float *a, float *b, int length)
 {
@@ -125,11 +145,11 @@ void getversor(float *a, float *b, float *u, int length)
     }
 }
 
-void V_rx_derivate_x(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
-                     float N, float current, float S, float G_ina,
-                     float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
-                     float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
-                     float F_0, float F_1, float F_2, float F_3, float V_rx_derivative_x[4])
+void V_rx_derivate_x_function(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
+                              float N, float current, float S, float G_ina,
+                              float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
+                              float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
+                              float F_0, float F_1, float F_2, float F_3, float V_rx_derivative_x[4])
 {
     float t2 = A0_x * 2.0f;
     float t3 = A1_x * 2.0f;
@@ -290,11 +310,11 @@ void V_rx_derivate_x(float T_x, float T_y, float T_z, float W_x, float W_y, floa
                            2.0f;
 }
 
-void V_rx_derivate_y(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
-                     float N, float current, float S, float G_ina,
-                     float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
-                     float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
-                     float F_0, float F_1, float F_2, float F_3, float V_rx_derivate_y[4])
+void V_rx_derivate_y_function(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
+                              float N, float current, float S, float G_ina,
+                              float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
+                              float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
+                              float F_0, float F_1, float F_2, float F_3, float V_rx_derivate_y[4])
 {
     float t2 = A0_y * 2.0f;
     float t3 = A1_y * 2.0f;
@@ -455,11 +475,11 @@ void V_rx_derivate_y(float T_x, float T_y, float T_z, float W_x, float W_y, floa
                          2.0f;
 }
 
-void V_rx_derivate_z(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
-                     float N, float current, float S, float G_ina,
-                     float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
-                     float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
-                     float F_0, float F_1, float F_2, float F_3, float V_rx_derivate_z[4])
+void V_rx_derivate_z_function(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
+                              float N, float current, float S, float G_ina,
+                              float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
+                              float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
+                              float F_0, float F_1, float F_2, float F_3, float V_rx_derivate_z[4])
 {
     float t2 = A0_z * 2.0f;
     float t3 = A1_z * 2.0f;
@@ -667,9 +687,27 @@ float V_from_B(float *B_field, float *rx_versor, float resonanceFreq)
     return V;
 }
 
+float computeSTD(float *data, int arrayDimension)
+{
+    float sum = 0.0, mean, standardDeviation = 0.0;
+
+    int i;
+
+    for (i = 0; i < arrayDimension; ++i)
+    {
+        sum += data[i];
+    }
+
+    mean = sum / arrayDimension;
+
+    for (i = 0; i < arrayDimension; ++i)
+        standardDeviation += pow(data[i] - mean, 2);
+
+    return sqrtf(standardDeviation / arrayDimension);
+}
+
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
-    // DEBUG_PRINT("kalmanCoreUpdateWithVolt\n");
 
     float B_field_vector_1[3];
     float B_field_vector_2[3];
@@ -678,25 +716,19 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
     if (currentCalibrationTick < CALIBRATION_TIC_VALUE)
     {
+        // ------------------------------ COLLECTING CALIBRATION MEASUREMENTS ------------------------------
         calibrationMean[0][0] += voltAnchor->measuredVolt[0];
-        // DEBUG_PRINT("measuredVolt[0] = %f\n", voltAnchor->measuredVolt[0]);
-
         calibrationMean[1][1] += voltAnchor->measuredVolt[1];
-        // DEBUG_PRINT("measuredVolt[1] = %f\n", voltAnchor->measuredVolt[1]);
-
         calibrationMean[2][2] += voltAnchor->measuredVolt[2];
-        // DEBUG_PRINT("measuredVolt[2] = %f\n", voltAnchor->measuredVolt[2]);
-
         calibrationMean[3][3] += voltAnchor->measuredVolt[3];
-        // DEBUG_PRINT("measuredVolt[3] = %f\n", voltAnchor->measuredVolt[3]);
 
         currentCalibrationTick = currentCalibrationTick + 1;
-        // DEBUG_PRINT("currentCalibrationTick = %d\n", currentCalibrationTick);
     }
     else
     {
         if (currentCalibrationTick == CALIBRATION_TIC_VALUE)
         {
+            // ------------------------------ CALIBRATION ------------------------------
             currentCalibrationTick = currentCalibrationTick + 1;
 
             float meanData_a1 = calibrationMean[0][0] / CALIBRATION_TIC_VALUE;
@@ -705,38 +737,24 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             float meanData_a4 = calibrationMean[3][3] / CALIBRATION_TIC_VALUE;
 
             DEBUG_PRINT("calibration data acquired!!\n");
-
             DEBUG_PRINT("calibration_Mean[0][0] = %f\n", (double)meanData_a1);
             DEBUG_PRINT("calibration_Mean[1][1] = %f\n", (double)meanData_a2);
             DEBUG_PRINT("calibration_Mean[2][2] = %f\n", (double)meanData_a3);
             DEBUG_PRINT("calibration_Mean[3][3] = %f\n", (double)meanData_a4);
 
-            // computing the predicted voltages to calculate the rapport between the measured and the predicted
-            float tag_pos_predicted_calibrated[3] = {this->S[KC_STATE_X], this->S[KC_STATE_Y], this->S[KC_STATE_Z]};
-            T_pre_x = tag_pos_predicted_calibrated[0];
-            T_pre_y = tag_pos_predicted_calibrated[1];
-            T_pre_z = tag_pos_predicted_calibrated[2];
+            point_t cfPosP;
+            estimatorKalmanGetEstimatedPos(&cfPosP);
+            // float tag_pos_predicted_calibrated[3] = {cfPosP.x, cfPosP.y, cfPosP.z};
+            float tag_pos_predicted_calibrated[3] = {0.0, 0.0, 0.0};
+            T_pre_x_fk = tag_pos_predicted_calibrated[0];
+            T_pre_y_fk = tag_pos_predicted_calibrated[1];
+            T_pre_z_fk = tag_pos_predicted_calibrated[2];
 
             // sarebbe il prodotto tra la matrice di rotazione e il versore  [0,0,1] iniziale
-            // NON CAMBIA MAI!@!!!!!!!
-            // float tag_or_versor_calibrated[3] = {this->R[0][2], this->R[1][2], this->R[2][2]};
-
             float RotationMatrix[3][3];
-            // DEBUG_PRINT("RotationMatrix[0][0] = %f\n", (double)this->R[0][0]);
-            // DEBUG_PRINT("RotationMatrix[0][1] = %f\n", (double)this->R[0][1]);
-            // DEBUG_PRINT("RotationMatrix[0][2] = %f\n", (double)this->R[0][2]);
-            // DEBUG_PRINT("RotationMatrix[1][0] = %f\n", (double)this->R[1][0]);
-            // DEBUG_PRINT("RotationMatrix[1][1] = %f\n", (double)this->R[1][1]);
-            // DEBUG_PRINT("RotationMatrix[1][2] = %f\n", (double)this->R[1][2]);
-            // DEBUG_PRINT("RotationMatrix[2][0] = %f\n", RotationMatrix[2][0]);
-            // DEBUG_PRINT("RotationMatrix[2][1] = %f\n", RotationMatrix[2][1]);
-            // DEBUG_PRINT("RotationMatrix[2][2] = %f\n", RotationMatrix[2][2]);
-
             estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
-            float tag_or_versor_calibrated[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
-            // logVarId_t idYaw = logGetVarId("stateEstimate", "yaw");
-            // float yaw = 0.0f;
-            // yaw = logGetFloat(idYaw);
+            // float tag_or_versor_calibrated[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
+            float tag_or_versor_calibrated[3] = {0.0, 0.0, 1.0};
 
             T_orientation[0] = tag_or_versor_calibrated[0];
             T_orientation[1] = tag_or_versor_calibrated[1];
@@ -771,10 +789,6 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             PredictedVoltages[1] = V_rx_2;
             PredictedVoltages[2] = V_rx_3;
             PredictedVoltages[3] = V_rx_4;
-            DEBUG_PRINT("PredictedVoltages[0] = %f\n", (double)PredictedVoltages[0]);
-            DEBUG_PRINT("PredictedVoltages[1] = %f\n", (double)PredictedVoltages[1]);
-            DEBUG_PRINT("PredictedVoltages[2] = %f\n", (double)PredictedVoltages[2]);
-            DEBUG_PRINT("PredictedVoltages[3] = %f\n", (double)PredictedVoltages[3]);
 
             CG_a1 = meanData_a1 / PredictedVoltages[0];
             CG_a2 = meanData_a2 / PredictedVoltages[1];
@@ -787,96 +801,81 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
         }
         else
         {
+            // ------------------------------------ RUNNING CASE ------------------------------------
             // start_timer();     // start the timer.
             // it1 = get_timer(); // store current cycle-count in a local
 
+            if (number_of_samples_for_DynamicStd < window_size)
+            {
+                // setting the default std
+                Nero_std = voltAnchor->stdDev[0];
+                Giallo_std = voltAnchor->stdDev[1];
+                Grigio_std = voltAnchor->stdDev[2];
+                Rosso_std = voltAnchor->stdDev[3];
+
+                // accumulating the data for the std deviation
+                Nero_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[0];
+                Giallo_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[1];
+                Grigio_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[2];
+                Rosso_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[3];
+
+                number_of_samples_for_DynamicStd += 1;
+            }
+            if (number_of_samples_for_DynamicStd == window_size)
+            {
+                // removing the first value
+                for (int i = 0; i < window_size - 1; i++)
+                {
+                    Nero_std_data[i] = Nero_std_data[i + 1];
+                    Giallo_std_data[i] = Giallo_std_data[i + 1];
+                    Grigio_std_data[i] = Grigio_std_data[i + 1];
+                    Rosso_std_data[i] = Rosso_std_data[i + 1];
+                }
+                // adding the new value
+                Nero_std_data[window_size - 1] = voltAnchor->measuredVolt[0];
+                Giallo_std_data[window_size - 1] = voltAnchor->measuredVolt[1];
+                Grigio_std_data[window_size - 1] = voltAnchor->measuredVolt[2];
+                Rosso_std_data[window_size - 1] = voltAnchor->measuredVolt[3];
+
+                // compute the std deviation
+                Nero_std = computeSTD(Nero_std_data, window_size);
+                Giallo_std = computeSTD(Giallo_std_data, window_size);
+                Grigio_std = computeSTD(Grigio_std_data, window_size);
+                Rosso_std = computeSTD(Rosso_std_data, window_size);
+            }
+
             // computing the B field for each of the 4 anchors
-            float tag_pos_predicted[3] = {this->S[KC_STATE_X], this->S[KC_STATE_Y], this->S[KC_STATE_Z]};
+            point_t cfPosP;
+            estimatorKalmanGetEstimatedPos(&cfPosP);
+            float cfPos[3] = {cfPosP.x, cfPosP.y, cfPosP.z};
+            T_pre_x_fk = cfPos[0];
+            T_pre_y_fk = cfPos[1];
+            T_pre_z_fk = cfPos[2];
 
-            T_pre_x = tag_pos_predicted[0];
-            T_pre_y = tag_pos_predicted[1];
-            T_pre_z = tag_pos_predicted[2];
-
-            // sarebbe il prodotto tra la matrice di rotazione e il versore  [0,0,1] iniziale
-            // float tag_or_versor[3] = {this->R[0][2], this->R[1][2], this->R[2][2]};
+            float tag_pos_predicted[3] = {cfPos[0], cfPos[1], cfPos[2]};
+            // float tag_pos_predicted[3] = {0.0, 0.0, 0.0};
 
             float RotationMatrix[3][3];
-
+            // sarebbe il prodotto tra la matrice di rotazione e il versore  [0,0,1] iniziale
             estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
             float tag_or_versor[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
+            // float tag_or_versor[3] = {0.0, 0.0, 1.0};
 
             T_orientation[0] = tag_or_versor[0];
             T_orientation[1] = tag_or_versor[1];
             T_orientation[2] = tag_or_versor[2];
-            // // SEMBRA OK [0,0,1]
-            // // if (pos_idx % 10 == 0)
-            // // {
-            // //     DEBUG_PRINT("tag_or_versor = %f,", tag_or_versor[0]);
-            // //     DEBUG_PRINT("%f,", tag_or_versor[1]);
-            // //     DEBUG_PRINT("%f\n", tag_or_versor[2]);
-            // // }
 
             float anchor_1_pose[3] = {voltAnchor->x[0], voltAnchor->y[0], voltAnchor->z[0]};
             float anchor_2_pose[3] = {voltAnchor->x[1], voltAnchor->y[1], voltAnchor->z[1]};
             float anchor_3_pose[3] = {voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2]};
             float anchor_4_pose[3] = {voltAnchor->x[3], voltAnchor->y[3], voltAnchor->z[3]};
 
-            // ########################################### DEBUG
-            // anchor_1_pose[0] = 0.5;
-            // anchor_1_pose[1] = 0.5;
-            // anchor_1_pose[2] = 0;
-
-            // anchor_2_pose[0] = -0.5;
-            // anchor_2_pose[1] = 0.5;
-            // anchor_2_pose[2] = 0;
-
-            // anchor_3_pose[0] = 0.5;
-            // anchor_3_pose[1] = -0.5;
-            // anchor_3_pose[2] = 0;
-
-            // anchor_4_pose[0] = -0.5;
-            // anchor_4_pose[1] = -0.5;
-            // anchor_4_pose[2] = 0;
-
-            // voltAnchor->x[0] = anchor_1_pose[0];
-            // voltAnchor->y[0] = anchor_1_pose[1];
-            // voltAnchor->z[0] = anchor_1_pose[2];
-
-            // voltAnchor->x[1] = anchor_2_pose[0];
-            // voltAnchor->y[1] = anchor_2_pose[1];
-            // voltAnchor->z[1] = anchor_2_pose[2];
-
-            // voltAnchor->x[2] = anchor_3_pose[0];
-            // voltAnchor->y[2] = anchor_3_pose[1];
-            // voltAnchor->z[2] = anchor_3_pose[2];
-
-            // voltAnchor->x[3] = anchor_4_pose[0];
-            // voltAnchor->y[3] = anchor_4_pose[1];
-            // voltAnchor->z[3] = anchor_4_pose[2];
-
-            // // CHECK THE ASSIGNEMENT WORKED
-            // // DEBUG_PRINT("voltAnchor->x[0] = %f\n", voltAnchor->x[0]);
-
-            // // add noise on the measurments
-            // voltAnchor->measuredVolt[0] = Volts_500_4_lut[pos_idx][0]; // + generate_gaussian_noise(0.0, voltAnchor->stdDev[0]);
-            // voltAnchor->measuredVolt[1] = Volts_500_4_lut[pos_idx][1]; // + generate_gaussian_noise(0.0, voltAnchor->stdDev[1]);
-            // voltAnchor->measuredVolt[2] = Volts_500_4_lut[pos_idx][2]; // + generate_gaussian_noise(0.0, voltAnchor->stdDev[2]);
-            // voltAnchor->measuredVolt[3] = Volts_500_4_lut[pos_idx][3]; // + generate_gaussian_noise(0.0, voltAnchor->stdDev[3]);
-
-            // // DEBUG_PRINT("voltAnchor->measuredVolt[0] = %f\n", voltAnchor->measuredVolt[0]);
-            // pos_idx = pos_idx + 1;
-            // // if (pos_idx % 10 == 0)
-            // // {
-            // //     DEBUG_PRINT("pos_idx = %d\n", pos_idx);
-            // // }
-            // // ########################################### DEBUG
-
             MeasuredVoltages_raw[0] = voltAnchor->measuredVolt[0];
             MeasuredVoltages_raw[1] = voltAnchor->measuredVolt[1];
             MeasuredVoltages_raw[2] = voltAnchor->measuredVolt[2];
             MeasuredVoltages_raw[3] = voltAnchor->measuredVolt[3];
 
-            MeasuredVoltages_calibrated[0] = voltAnchor->measuredVolt[0] / CG_a1;
+            MeasuredVoltages_calibrated[0] = (voltAnchor->measuredVolt[0] / CG_a1) / 0.995941558f;
             MeasuredVoltages_calibrated[1] = voltAnchor->measuredVolt[1] / CG_a2;
             MeasuredVoltages_calibrated[2] = voltAnchor->measuredVolt[2] / CG_a3;
             MeasuredVoltages_calibrated[3] = voltAnchor->measuredVolt[3] / CG_a4;
@@ -889,12 +888,6 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             B[0][0] = B_field_vector_1[0];
             B[0][1] = B_field_vector_1[1];
             B[0][2] = B_field_vector_1[2];
-            // if (pos_idx % 10 == 0)
-            // {
-            //     DEBUG_PRINT("B_ANCHOR_0 = %f,", B[0][0] * 10e12);
-            //     DEBUG_PRINT("%f,", B[0][1] * 10e12);
-            //     DEBUG_PRINT("%f\n", B[0][2] * 10e10);
-            // }
 
             B[1][0] = B_field_vector_2[0];
             B[1][1] = B_field_vector_2[1];
@@ -924,7 +917,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             float V_rx_derivative_y[4];
             float V_rx_derivative_z[4];
 
-            V_rx_derivate_x(
+            V_rx_derivate_x_function(
                 tag_pos_predicted[0], tag_pos_predicted[1], tag_pos_predicted[2],
                 tag_or_versor[0], tag_or_versor[1], tag_or_versor[2],
                 N_WOUNDS, CURRENT, COIL_SURFACE, G_INA,
@@ -935,7 +928,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 voltAnchor->resonanceFrequency[0], voltAnchor->resonanceFrequency[1], voltAnchor->resonanceFrequency[2], voltAnchor->resonanceFrequency[3],
                 V_rx_derivative_x);
 
-            V_rx_derivate_y(
+            V_rx_derivate_y_function(
                 tag_pos_predicted[0], tag_pos_predicted[1], tag_pos_predicted[2],
                 tag_or_versor[0], tag_or_versor[1], tag_or_versor[2],
                 N_WOUNDS, CURRENT, COIL_SURFACE, G_INA,
@@ -946,7 +939,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 voltAnchor->resonanceFrequency[0], voltAnchor->resonanceFrequency[1], voltAnchor->resonanceFrequency[2], voltAnchor->resonanceFrequency[3],
                 V_rx_derivative_y);
 
-            V_rx_derivate_z(
+            V_rx_derivate_z_function(
                 tag_pos_predicted[0], tag_pos_predicted[1], tag_pos_predicted[2],
                 tag_or_versor[0], tag_or_versor[1], tag_or_versor[2],
                 N_WOUNDS, CURRENT, COIL_SURFACE, G_INA,
@@ -973,13 +966,13 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             arm_matrix_instance_f32 H_1 = {1, KC_STATE_DIM, h_1};
             h_1[KC_STATE_X] = V_rx_derivative_x[1];
             h_1[KC_STATE_Y] = V_rx_derivative_y[1];
-            // h_1[KC_STATE_Z] = V_rx_derivative_z[1];
+            h_1[KC_STATE_Z] = V_rx_derivative_z[1];
 
             float h_2[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_2 = {1, KC_STATE_DIM, h_2};
             h_2[KC_STATE_X] = V_rx_derivative_x[2];
             h_2[KC_STATE_Y] = V_rx_derivative_y[2];
-            // h_2[KC_STATE_Z] = V_rx_derivative_z[2];
+            h_2[KC_STATE_Z] = V_rx_derivative_z[2];
 
             float h_3[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_3 = {1, KC_STATE_DIM, h_3};
@@ -1002,16 +995,14 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             E_3 = error_anchor3;
             E_4 = error_anchor4;
 
-            CalibrationRapport_anchor1 = MeasuredVoltages_calibrated[0] / PredictedVoltages[0];
-            CalibrationRapport_anchor2 = MeasuredVoltages_calibrated[1] / PredictedVoltages[1];
-            CalibrationRapport_anchor3 = MeasuredVoltages_calibrated[2] / PredictedVoltages[2];
-            CalibrationRapport_anchor4 = MeasuredVoltages_calibrated[3] / PredictedVoltages[3];
-
-            // Potrebbe essere troppo piccolo l'errore. o le stime troppo diverse?!?!?!
-            // kalmanCoreScalarUpdate(this, &H_1, error_anchor1, voltAnchor->stdDev[0]);
-            // kalmanCoreScalarUpdate(this, &H_2, error_anchor2, voltAnchor->stdDev[1]);
-            // kalmanCoreScalarUpdate(this, &H_3, error_anchor3, voltAnchor->stdDev[2]);
-            // kalmanCoreScalarUpdate(this, &H_4, error_anchor4, voltAnchor->stdDev[3]);
+            // kalmanCoreScalarUpdate(this, &H_1, error_anchor1, Nero_std);
+            // kalmanCoreScalarUpdate(this, &H_2, error_anchor2, Giallo_std);
+            // kalmanCoreScalarUpdate(this, &H_3, error_anchor3, Grigio_std);
+            // kalmanCoreScalarUpdate(this, &H_4, error_anchor4, Rosso_std);
+            // kalmanCoreScalarUpdate(this, &H_1, error_anchor1 * 10, 0.0003944104246329516f * 10);
+            // kalmanCoreScalarUpdate(this, &H_2, error_anchor2 * 10, 0.0004084668471477926f * 10);
+            // kalmanCoreScalarUpdate(this, &H_3, error_anchor3 * 10, 0.0004809045931324363f * 10);
+            // kalmanCoreScalarUpdate(this, &H_4, error_anchor4 * 10, 0.00034749944461509585f * 10);
         }
     }
 }
@@ -1043,9 +1034,13 @@ LOG_ADD(LOG_FLOAT, C_R_2, &CalibrationRapport_anchor2)
 LOG_ADD(LOG_FLOAT, C_R_3, &CalibrationRapport_anchor3)
 LOG_ADD(LOG_FLOAT, C_R_4, &CalibrationRapport_anchor4)
 
-LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
-LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
-LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
+// LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
+// LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
+// LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
+
+LOG_ADD(LOG_FLOAT, T_pred_x_fk, &T_pre_x_fk)
+LOG_ADD(LOG_FLOAT, T_pred_y_fk, &T_pre_y_fk)
+LOG_ADD(LOG_FLOAT, T_pred_z_fk, &T_pre_z_fk)
 
 LOG_ADD(LOG_FLOAT, T_or_0, &T_orientation[0])
 LOG_ADD(LOG_FLOAT, T_or_1, &T_orientation[1])
@@ -1086,6 +1081,11 @@ LOG_ADD(LOG_FLOAT, B_2_2, &B[2][2])
 LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
 LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
 LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
+
+LOG_ADD(LOG_FLOAT, Nero_std, &Nero_std)
+LOG_ADD(LOG_FLOAT, Giallo_std, &Giallo_std)
+LOG_ADD(LOG_FLOAT, Grigio_std, &Grigio_std)
+LOG_ADD(LOG_FLOAT, Rosso_std, &Rosso_std)
 
 LOG_GROUP_STOP(Dipole_Model)
 
