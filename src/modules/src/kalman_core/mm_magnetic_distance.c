@@ -21,7 +21,6 @@
 // #define get_timer() *((volatile uint32_t *)0xE0001004)
 
 // logVarId_t gainID =  logGetVarId("Potentiometer_G_P", "GainValue");
-
 // #define G_INA logGetFloat(GainID)
 
 // uint32_t it1, it2; // start and stop flag
@@ -86,34 +85,6 @@ float Nero_std = 0;
 float Giallo_std = 0;
 float Grigio_std = 0;
 float Rosso_std = 0;
-
-// DEBUG FUNCTION
-double generate_gaussian_noise(double mu, double sigma)
-{
-    static const double epsilon = 1e-10;
-    static const double two_pi = 2.0 * 3.14159265358979323846;
-
-    static double z1;
-    static int generate;
-    generate = !generate;
-
-    if (!generate)
-        return z1 * sigma + mu;
-
-    double u1, u2;
-    do
-    {
-        u1 = rand() / (RAND_MAX + 1.0);
-        u2 = rand() / (RAND_MAX + 1.0);
-    } while (u1 <= epsilon);
-
-    double z0;
-    z0 = sqrt(-2.0 * log(u1)) * cos(two_pi * u2);
-    z1 = sqrt(-2.0 * log(u1)) * sin(two_pi * u2);
-    return z0 * sigma + mu;
-}
-
-// WORKING FUNCTIONS
 
 float dot_product(float *a, float *b, int length)
 {
@@ -729,6 +700,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
         if (currentCalibrationTick == CALIBRATION_TIC_VALUE)
         {
             // ------------------------------ CALIBRATION ------------------------------
+            // For  calibration i fixed the tag position and orientation to 0,0,0 and 0,0,1
             currentCalibrationTick = currentCalibrationTick + 1;
 
             float meanData_a1 = calibrationMean[0][0] / CALIBRATION_TIC_VALUE;
@@ -750,7 +722,6 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             T_pre_y_fk = tag_pos_predicted_calibrated[1];
             T_pre_z_fk = tag_pos_predicted_calibrated[2];
 
-            // sarebbe il prodotto tra la matrice di rotazione e il versore  [0,0,1] iniziale
             float RotationMatrix[3][3];
             estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
             // float tag_or_versor_calibrated[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
@@ -856,7 +827,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             // float tag_pos_predicted[3] = {0.0, 0.0, 0.0};
 
             float RotationMatrix[3][3];
-            // sarebbe il prodotto tra la matrice di rotazione e il versore  [0,0,1] iniziale
+            // it would be the product between the rotation matrix and the initial [0,0,1] versor
             estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
             float tag_or_versor[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
             // float tag_or_versor[3] = {0.0, 0.0, 1.0};
@@ -995,14 +966,10 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             E_3 = error_anchor3;
             E_4 = error_anchor4;
 
-            // kalmanCoreScalarUpdate(this, &H_1, error_anchor1, Nero_std);
-            // kalmanCoreScalarUpdate(this, &H_2, error_anchor2, Giallo_std);
-            // kalmanCoreScalarUpdate(this, &H_3, error_anchor3, Grigio_std);
-            // kalmanCoreScalarUpdate(this, &H_4, error_anchor4, Rosso_std);
-            // kalmanCoreScalarUpdate(this, &H_1, error_anchor1 * 10, 0.0003944104246329516f * 10);
-            // kalmanCoreScalarUpdate(this, &H_2, error_anchor2 * 10, 0.0004084668471477926f * 10);
-            // kalmanCoreScalarUpdate(this, &H_3, error_anchor3 * 10, 0.0004809045931324363f * 10);
-            // kalmanCoreScalarUpdate(this, &H_4, error_anchor4 * 10, 0.00034749944461509585f * 10);
+            kalmanCoreScalarUpdate(this, &H_1, error_anchor1, Nero_std);
+            kalmanCoreScalarUpdate(this, &H_2, error_anchor2, Giallo_std);
+            kalmanCoreScalarUpdate(this, &H_3, error_anchor3, Grigio_std);
+            kalmanCoreScalarUpdate(this, &H_4, error_anchor4, Rosso_std);
         }
     }
 }

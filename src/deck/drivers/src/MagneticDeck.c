@@ -23,6 +23,10 @@
 
 #define CONFIG_DEBUG = y
 
+// System HZ
+#define SYSTEM_HZ 100
+#define SYSTEM_PERIOD_MS (1000 / SYSTEM_HZ)
+
 // ADC DMA configuration
 #define ARRAY_SIZE 2048
 uint32_t DMA_Buffer[ARRAY_SIZE];
@@ -30,9 +34,8 @@ ADC_TypeDef *ADC_n = ADC1;
 DMA_Stream_TypeDef *DMA_Stream = DMA2_Stream4;
 uint32_t DMA_Channel = DMA_Channel_0;
 IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
-// 2^12 DOVE 12 SONO I BIT DELL'ADC DEL MCU = 4096
+// 2^12 WHERE 12 IS THE NUMBER OF BITS OF THE MCU ADC = 4096
 #define ADC_LEVELS 4096
-//  CONTROLLA se è 3 o 3.0
 #define ADC_MAX_VOLTAGE 3.0f
 #define PCLK2 84e6f
 #define ADC_PRESCALER 6.0f
@@ -64,13 +67,12 @@ uint16_t fft_length = FFT_SIZE;
 #define DAC_STEP (VREF / DAC_LEVELS)
 #define DECK_DAC_I2C_ADDRESS 0x4C //
 #define DAC_WRITE_LENGTH 2
-#define DAC_ANALOG_HW_DELAY_AFTER_SET 100
+#define DAC_ANALOG_HW_DELAY_AFTER_SET 10
 #define V_DD 3.3f
 
 // Potentiometer Params
-#define R10 200.0f // 200 Ohm
-// #define TYPICAL_DC_WIPER_RESISTANCE 15.05f // 155 OHM
-#define RW_2_7V 155 // ohm
+#define R10 200.0f  // 200 Ohm
+#define RW_2_7V 155 // ohm  155 OHM TYPICAL_DC_WIPER_RESISTANCE
 #define RW_5_5V 100 // ohm
 
 #define POTENTIOMETER_ADDR 0x2F // 0x94 WRITE 0x95 READ
@@ -78,7 +80,7 @@ uint16_t fft_length = FFT_SIZE;
 // #define POTENTIOMETER_STEPS pow(2, POTENTIOMETER_BIT) // 7 bit --> 128
 #define POTENTIOMETER_NUMBER_OF_STEPS (1 << POTENTIOMETER_BIT) - 1 // 127
 #define POTENTIOMETER_FULL_SCALE_RAB 50E3                          // 50 kOhm
-#define POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET 100
+#define POTENTIOMETER_ANALOG_HW_DELAY_AFTER_SET 10
 float32_t GainValue_Setted = 0;
 float GainValue = 10;
 
@@ -218,7 +220,6 @@ void DMA2_Stream4_IRQHandler(void)
         ADC_Done = 1;
     }
     if (DMA_GetITStatus(DMA_Stream, DMA_IT_TEIF4))
-    // NON RISOLVE IL PROBLEMA
     {
         DEBUG_PRINT("DMA_IT_TEIF4\n");
         DMA_ClearITPendingBit(DMA_Stream, DMA_IT_TEIF4);
@@ -251,50 +252,44 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
 
     // TODO: 2.4 Voltages max voltages before saturation, so if you see 2.4V in the output, then change the gain. Also viceversa, to be tested the mimumum value
 
-    // applico la finestratura flattop
+    // apply flattop window
     arm_mult_f32(Output_buffer_pointer, (float32_t *)flattop_2048_lut, Output_buffer_pointer, FFT_SIZE);
 
-    // eseguo FFT
+    // perform FFT
     arm_rfft_fast_f32(&fft_instance, Output_buffer_pointer, fft_output, 0);
 
-    // normalizzo l'output
-    // forse c'e una funzione per fare questo in automatico
+    // normalizing the fft output
     int i = 0;
     for (i = 0; i < FFT_SIZE; i++)
     {
         fft_output[i] = fft_output[i] / FFT_SIZE;
     }
 
-    // calcolo le ampiezze della fft
+    // computing the magnitude of the fft
     arm_cmplx_mag_f32(fft_output, fft_magnitude, FFT_SIZE / 2);
 
-    // Calculate the maximum value and its index around NeroIdx
+    // Extract the max for each anchor
+    // NOTE:*2 is because the fft of a sin is 2 impulsive delta of A/2 amplitude therefore to get the full amplitude of the signal i need to multiply by 2
+    // NOTE: *flattopCorrectionFactor is the correction factor for the flattop window that i applied
+
+    // Extract the maximum value and its index around NeroIdx
     uint32_t maxindex;
     arm_max_f32(&fft_magnitude[NeroIdx - 2], 4, &NeroAmpl, &maxindex);
-    // maxindex += NeroIdx - 1;
-
-    // *2 is for the fft range
     NeroAmpl = NeroAmpl * flattopCorrectionFactor * 2.0f;
-    // NeroAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around GialloIdx
     arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &GialloAmpl, &maxindex);
-    // maxindex += GialloIdx - 1;
     GialloAmpl = GialloAmpl * flattopCorrectionFactor * 2.0f;
-    // GialloAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around GrigioIdx
     arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &GrigioAmpl, &maxindex);
-    // maxindex += GrigioIdx - 1;
     GrigioAmpl = GrigioAmpl * flattopCorrectionFactor * 2.0f;
-    // GrigioAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
     // Calculate the maximum value and its index around RossoIdx
     arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &RossoAmpl, &maxindex);
-    // maxindex += RossoIdx - 1;
     RossoAmpl = RossoAmpl * flattopCorrectionFactor * 2.0f;
-    // RossoAmpl = fft_magnitude[maxindex] * flattopCorrectionFactor;
 
+    // TO IMPLEMENT!!!!
     // check if the ADC is saturating
     // if (NeroAmpl == 2.4 || GialloAmpl == 0 || GrigioAmpl == 0 || RossoAmpl == 0)
     // {
@@ -303,6 +298,7 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     // }
 
     // --------------------------------- 2D MEASURMENT MODEL - DISTANCE COMPUTATION ---------------------------------
+    // THIS MODEL IS NOT USED TO UPDATE THE KALMAN FILTER, JUST AS CONFIRMATION
 
     // compute the the distances from the amplitude of each anchor
     Nero_distance = powf(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
@@ -352,6 +348,7 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     // estimatorEnqueueDistance(&dist_Rosso);
 
     // ---------------3D MEASUREMENT MODEL - POSITION COMPUTATION------------------------------
+    // THIS MODEL IS USED TO UPDATE THE KALMAN FILTER
 
     voltMeasurement_t volt;
 
@@ -397,7 +394,7 @@ static void mytask(void *param)
     DEBUG_PRINT("System Started\n");
 
     // DAC Setup
-    // SETTING the reference voltaage for the DAC using i2c
+    // SETTING the reference voltage for the DAC using i2c
     uint16_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
     uint8_t DAC_Write[2] = {0, 0};
     DAC_Write[1] = ValueforDAC & 0x00FF;
@@ -425,11 +422,6 @@ static void mytask(void *param)
     DEBUG_PRINT("Potentiometer Readed result: %d\n", result_read);
     DEBUG_PRINT("Potentiometer Read Value: %d\n", PotentiometerReadValue);
 
-    DEBUG_PRINT("ADD SAFETY CHECK\n");
-    DEBUG_PRINT("ADD SAFETY CHECK\n");
-    DEBUG_PRINT("ADD SAFETY CHECK\n");
-    DEBUG_PRINT("ADD SAFETY CHECK\n");
-
     // gpio init
     GPIO_init_analog(DECK_GPIO_RX2);
     // DMA init
@@ -437,22 +429,18 @@ static void mytask(void *param)
     // adc init
     ADC_init_DMA_mode(RCC_APB2Periph_ADC1, ADC_n);
     // Call the ADC_DMA_start function
-
     ADC_DMA_start(ADC_n, ADC_Channel, 1, ADC_SampleTime_15Cycles);
-
+    // Initialize the FFT instance
     arm_rfft_fast_init_f32(&fft_instance, fft_length);
-    // DEBUG_PRINT("FFT initialized\n");
 
     // Flattop correction factor calculation
     float32_t sum = 0.0;
-
     for (int i = 0; i < ARRAY_SIZE; i++)
     {
         sum += flattop_2048_lut[i];
     }
     float32_t flattopCorrectionFactor = ARRAY_SIZE / sum;
     DEBUG_PRINT("Flattop Correction Factor: %f\n", flattopCorrectionFactor);
-    // float32_t flattopCorrectionFactor = 1;
 
     while (1)
     {
@@ -470,22 +458,20 @@ static void mytask(void *param)
         }
         if (ADC_Done == 1 && GainValue == 0)
         {
+            // The DMA buffer is full, perform the FFT
 
             performFFT(DMA_Buffer, fft_input, flattopCorrectionFactor);
-            // firstValue = DMA_Buffer[1000];
-            // FirstVolt = firstValue * ADC_MAX_VOLTAGE / ADC_LEVELS;
 
-            // DMA_inititalization(RCC_AHB1Periph_DMA2, DMA_Stream, DMA_Buffer, ADC_n, DMA_Channel, DMA_IRQ, ARRAY_SIZE);
+            // The FFT is done, restart the ADC
             DMA_Cmd(DMA_Stream, ENABLE);
-            // ADC_init_DMA_mode(RCC_APB2Periph_ADC1, ADC_n);
             ADC_DMA_start(ADC_n, ADC_Channel, 1, ADC_SampleTime_15Cycles);
 
             ADC_Done = 0;
-            // DEBUG_PRINT("First Value: %d\n", firstValue);
         }
         else
         {
-            // ----------------------------------------
+            // SOMETIME THE ADC IS BLOCKED, SO I NEED TO RESTART IT MANUALLY, SEEMS NOT APPENING ANYMORE
+            // ------------DEBUGGING STUFF--------------
 
             // NON È NESSUNA DI QUESTE CONDIZIONI
 
@@ -540,14 +526,15 @@ static void mytask(void *param)
             //     ADC_Done = 1;
             // }
 
-            // Se si bloccal l'adc si puo' usare questo
+            // Se si blocca l'adc si puo' usare questo
             // non ha senso!!!
             ADC_Done = 1;
             DEBUG_PRINT("First Value: %d\n", ADC_Done);
             // ma funziona cosi, non so poi come siano i dati
         }
 
-        vTaskDelay(M2T(10));
+        // Defining the delay between the executions
+        vTaskDelay(M2T(SYSTEM_PERIOD_MS));
     }
 }
 
@@ -562,7 +549,6 @@ static void magneticInit()
     xTaskCreate(mytask, MAGNETIC_TASK_NAME,
                 MAGNETIC_TASK_STACKSIZE, NULL, MAGNETIC_TASK_PRI, NULL);
 
-    // DEBUG_PRINT("MAGNETIC init ended!\n");
     isInit = true;
 }
 

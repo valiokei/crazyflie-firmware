@@ -178,24 +178,6 @@ typedef struct distanceMeasurement_s
   float stdDev;
 } distanceMeasurement_t;
 
-// typedef struct voltMeasurement_s
-// {
-//   union
-//   {
-//     struct
-//     {
-//       float x[4];
-//       float y[4];
-//       float z[4];
-//     };
-//     float anchor_pos[4][3];
-//   };
-//   uint8_t anchorId[4];
-//   float measuredVolt[4];
-//   float resonanceFrequency[4];
-//   float stdDev[4];
-// } voltMeasurement_t;
-
 typedef struct voltMeasurement_s
 {
 
