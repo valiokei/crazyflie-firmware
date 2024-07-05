@@ -529,7 +529,7 @@ static void mytask(void *param)
             // Se si blocca l'adc si puo' usare questo
             // non ha senso!!!
             ADC_Done = 1;
-            DEBUG_PRINT("First Value: %d\n", ADC_Done);
+            DEBUG_PRINT("ADC_Done: %d\n", ADC_Done);
             // ma funziona cosi, non so poi come siano i dati
         }
 
@@ -570,11 +570,6 @@ DECK_DRIVER(magneticDriver);
 
 #define CONFIG_DEBUG_LOG_ENABLE = y
 
-// LOG_GROUP_START(ADC)
-// LOG_ADD_DEBUG(LOG_UINT16, firstValue, &firstValue)
-// LOG_ADD_DEBUG(LOG_UINT16, FirstVolt, &FirstVolt)
-// LOG_GROUP_STOP(ADC)
-
 LOG_GROUP_START(MAGNETIC_DISTANCES)
 LOG_ADD(LOG_FLOAT, Nero, &Nero_distance)
 LOG_ADD(LOG_FLOAT, Giallo, &Giallo_distance)
@@ -603,6 +598,7 @@ PARAM_GROUP_STOP(MAGNETIC_Params)
 LOG_GROUP_START(Potentiometer_g_L)
 LOG_ADD(LOG_FLOAT, GpS, &GainValue_Setted)
 LOG_GROUP_STOP(Potentiometer_G_L)
+
 PARAM_GROUP_START(Potentiometer_G_P)
 PARAM_ADD(PARAM_FLOAT, G_pot, &GainValue)
 PARAM_GROUP_STOP(Potentiometer_G_P)

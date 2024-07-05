@@ -24,7 +24,7 @@
 // #define G_INA logGetFloat(GainID)
 
 // uint32_t it1, it2; // start and stop flag
-float MeasuredVoltages_calibrated[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+volatile float MeasuredVoltages_calibrated[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 float MeasuredVoltages_raw[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 float PredictedVoltages[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 float Derivative_x[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -81,10 +81,10 @@ float Giallo_std_data[window_size];
 float Grigio_std_data[window_size];
 float Rosso_std_data[window_size];
 
-float Nero_std = 0;
-float Giallo_std = 0;
-float Grigio_std = 0;
-float Rosso_std = 0;
+volatile float Nero_std = 0;
+volatile float Giallo_std = 0;
+volatile float Grigio_std = 0;
+volatile float Rosso_std = 0;
 
 float dot_product(float *a, float *b, int length)
 {
@@ -660,19 +660,21 @@ float V_from_B(float *B_field, float *rx_versor, float resonanceFreq)
 
 float computeSTD(float *data, int arrayDimension)
 {
-    float sum = 0.0, mean, standardDeviation = 0.0;
+    float sum = 0.0;
+    float mean = 0.0;
+    float standardDeviation = 0.0;
 
     int i;
 
-    for (i = 0; i < arrayDimension; ++i)
+    for (i = 0; i < arrayDimension; i++)
     {
         sum += data[i];
     }
 
     mean = sum / arrayDimension;
 
-    for (i = 0; i < arrayDimension; ++i)
-        standardDeviation += pow(data[i] - mean, 2);
+    for (i = 0; i < arrayDimension; i++)
+        standardDeviation += powf(data[i] - mean, 2);
 
     return sqrtf(standardDeviation / arrayDimension);
 }
@@ -809,10 +811,10 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 Rosso_std_data[window_size - 1] = voltAnchor->measuredVolt[3];
 
                 // compute the std deviation
-                Nero_std = computeSTD(Nero_std_data, window_size);
-                Giallo_std = computeSTD(Giallo_std_data, window_size);
-                Grigio_std = computeSTD(Grigio_std_data, window_size);
-                Rosso_std = computeSTD(Rosso_std_data, window_size);
+                Nero_std = computeSTD(&Nero_std_data[0], window_size);
+                Giallo_std = computeSTD(&Giallo_std_data[0], window_size);
+                Grigio_std = computeSTD(&Grigio_std_data[0], window_size);
+                Rosso_std = computeSTD(&Rosso_std_data[0], window_size);
             }
 
             // computing the B field for each of the 4 anchors
@@ -1049,10 +1051,12 @@ LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
 LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
 LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
 
-LOG_ADD(LOG_FLOAT, Nero_std, &Nero_std)
-LOG_ADD(LOG_FLOAT, Giallo_std, &Giallo_std)
-LOG_ADD(LOG_FLOAT, Grigio_std, &Grigio_std)
-LOG_ADD(LOG_FLOAT, Rosso_std, &Rosso_std)
+LOG_ADD(LOG_FLOAT, A0_N_std, &Nero_std)
+LOG_ADD(LOG_FLOAT, A1_Gia_std, &Giallo_std)
+LOG_ADD(LOG_FLOAT, A2_Gr_std, &Grigio_std)
+LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
+
+LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
 
 LOG_GROUP_STOP(Dipole_Model)
 
