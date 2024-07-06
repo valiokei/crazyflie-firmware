@@ -6,7 +6,7 @@
 #include "stabilizer_types.h"
 #include "estimator.h"
 #include "estimator_kalman.h"
-#include <stdlib.h>
+#include "nelder_mead.h"
 
 #define G_INA 100.0f
 #define RAY 0.019f
@@ -15,6 +15,7 @@
 #define CURRENT 0.5f
 #define MU_0 1.25663706212e-06f
 #define PI 3.14159265359f
+#define Num_Anchors 4
 
 // #define start_timer() *((volatile uint32_t *)0xE0001000) = 0x40000001 // Enable CYCCNT register
 // #define stop_timer() *((volatile uint32_t *)0xE0001000) = 0x40000000  // Disable CYCCNT register
@@ -116,501 +117,6 @@ void getversor(float *a, float *b, float *u, int length)
     }
 }
 
-void V_rx_derivate_x_function(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
-                              float N, float current, float S, float G_ina,
-                              float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
-                              float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
-                              float F_0, float F_1, float F_2, float F_3, float V_rx_derivative_x[4])
-{
-    float t2 = A0_x * 2.0f;
-    float t3 = A1_x * 2.0f;
-    float t4 = A2_x * 2.0f;
-    float t5 = A3_x * 2.0f;
-    float t6 = T_x * 2.0f;
-    float t7 = 1.0f / PI;
-    float t8 = -T_x;
-    float t10 = -T_y;
-    float t11 = -T_z;
-    float t12 = N * S * W_x * current;
-    float t13 = N * S * W_y * current;
-    float t14 = N * S * W_z * current;
-    float t9 = -t6;
-    float t15 = A0_x + t8;
-    float t16 = A1_x + t8;
-    float t17 = A2_x + t8;
-    float t18 = A3_x + t8;
-    float t19 = A0_y + t10;
-    float t20 = A1_y + t10;
-    float t21 = A2_y + t10;
-    float t22 = A3_y + t10;
-    float t23 = A0_z + t11;
-    float t24 = A1_z + t11;
-    float t25 = A2_z + t11;
-    float t26 = A3_z + t11;
-    float t30 = t2 + t9;
-    float t31 = t3 + t9;
-    float t32 = t4 + t9;
-    float t33 = t5 + t9;
-    float t34 = t15 * t15;
-    float t35 = t16 * t16;
-    float t36 = t17 * t17;
-    float t37 = t18 * t18;
-    float t38 = t19 * t19;
-    float t39 = t20 * t20;
-    float t40 = t21 * t21;
-    float t41 = t22 * t22;
-    float t42 = t23 * t23;
-    float t43 = t24 * t24;
-    float t44 = t25 * t25;
-    float t45 = t26 * t26;
-    float t46 = t34 + t38 + t42;
-    float t47 = t35 + t39 + t43;
-    float t48 = t36 + t40 + t44;
-    float t49 = t37 + t41 + t45;
-    float t50 = 1.0f / sqrtf(t46);
-    float t52 = 1.0f / sqrtf(t47);
-    float t55 = 1.0f / sqrtf(t48);
-    float t58 = 1.0f / sqrtf(t49);
-    float t51 = t50 * t50 * t50;
-    float t53 = t50 * t50 * t50 * t50 * t50;
-    float t54 = t52 * t52 * t52;
-    float t56 = t52 * t52 * t52 * t52 * t52;
-    float t57 = t55 * t55 * t55;
-    float t59 = t55 * t55 * t55 * t55 * t55;
-    float t60 = t58 * t58 * t58;
-    float t61 = t58 * t58 * t58 * t58 * t58;
-    float t62 = t12 * t50 * 3.0f;
-    float t63 = t12 * t52 * 3.0f;
-    float t64 = t12 * t55 * 3.0f;
-    float t65 = t12 * t58 * 3.0f;
-    float t74 = t13 * t19 * t50 * 3.0f;
-    float t75 = t13 * t20 * t52 * 3.0f;
-    float t76 = t13 * t21 * t55 * 3.0f;
-    float t77 = t13 * t22 * t58 * 3.0f;
-    float t78 = t14 * t23 * t50 * 3.0f;
-    float t79 = t14 * t24 * t52 * 3.0f;
-    float t80 = t14 * t25 * t55 * 3.0f;
-    float t81 = t14 * t26 * t58 * 3.0f;
-    float t66 = -t62;
-    float t67 = -t63;
-    float t68 = -t64;
-    float t69 = -t65;
-    float t70 = t15 * t62;
-    float t71 = t16 * t63;
-    float t72 = t17 * t64;
-    float t73 = t18 * t65;
-    float t82 = t12 * t15 * t30 * t51 * (3.0f / 2.0f);
-    float t83 = t12 * t16 * t31 * t54 * (3.0f / 2.0f);
-    float t84 = t12 * t17 * t32 * t57 * (3.0f / 2.0f);
-    float t85 = t12 * t18 * t33 * t60 * (3.0f / 2.0f);
-    float t86 = t13 * t19 * t30 * t51 * (3.0f / 2.0f);
-    float t87 = t13 * t20 * t31 * t54 * (3.0f / 2.0f);
-    float t88 = t13 * t21 * t32 * t57 * (3.0f / 2.0f);
-    float t89 = t13 * t22 * t33 * t60 * (3.0f / 2.0f);
-    float t90 = t14 * t23 * t30 * t51 * (3.0f / 2.0f);
-    float t91 = t14 * t24 * t31 * t54 * (3.0f / 2.0f);
-    float t92 = t14 * t25 * t32 * t57 * (3.0f / 2.0f);
-    float t93 = t14 * t26 * t33 * t60 * (3.0f / 2.0f);
-    float t94 = t70 + t74 + t78;
-    float t95 = t71 + t75 + t79;
-    float t96 = t72 + t76 + t80;
-    float t97 = t73 + t77 + t81;
-    float t122 = t66 + t82 + t86 + t90;
-    float t123 = t67 + t83 + t87 + t91;
-    float t124 = t68 + t84 + t88 + t92;
-    float t125 = t69 + t85 + t89 + t93;
-    float t98 = t15 * t50 * t94;
-    float t99 = t16 * t52 * t95;
-    float t100 = t17 * t55 * t96;
-    float t101 = t18 * t58 * t97;
-    float t102 = t19 * t50 * t94;
-    float t103 = t20 * t52 * t95;
-    float t104 = t21 * t55 * t96;
-    float t105 = t22 * t58 * t97;
-    float t106 = t23 * t50 * t94;
-
-    V_rx_derivative_x[0] = F_0 * G_ina * N * S * PI *
-                           copysignf(1.0f, MU_0 * W_x * t7 * t51 * (t12 - t98) * (-1.0f / 4.0f) -
-                                               (MU_0 * W_y * t7 * t51 * (t13 - t102)) / 4.0f -
-                                               (MU_0 * W_z * t7 * t51 * (t14 - t106)) / 4.0f) *
-                           ((MU_0 * W_y * t7 * t51 * (t19 * t50 * t122 + (t19 * t30 * t51 * t94) / 2.0f)) / 4.0f +
-                            (MU_0 * W_z * t7 * t51 * (t23 * t50 * t122 + (t23 * t30 * t51 * t94) / 2.0f)) / 4.0f +
-                            (MU_0 * W_x * t7 * t51 * (-t50 * t94 + t15 * t50 * t122 + (t15 * t30 * t51 * t94) / 2.0f)) / 4.0f -
-                            MU_0 * W_x * t7 * t30 * t53 * (t12 - t98) * (3.0f / 8.0f) -
-                            MU_0 * W_y * t7 * t30 * t53 * (t13 - t102) * (3.0f / 8.0f) -
-                            MU_0 * W_z * t7 * t30 * t53 * (t14 - t106) * (3.0f / 8.0f)) *
-                           2.0f;
-
-    float t107 = t24 * t52 * t95;
-    V_rx_derivative_x[1] = F_1 * G_ina * N * S * PI *
-                           copysignf(1.0f, MU_0 * W_x * t7 * t54 * (t12 - t99) * (-1.0f / 4.0f) -
-                                               (MU_0 * W_y * t7 * t54 * (t13 - t103)) / 4.0f -
-                                               (MU_0 * W_z * t7 * t54 * (t14 - t107)) / 4.0f) *
-                           ((MU_0 * W_y * t7 * t54 * (t20 * t52 * t123 + (t20 * t31 * t54 * t95) / 2.0f)) / 4.0f +
-                            (MU_0 * W_z * t7 * t54 * (t24 * t52 * t123 + (t24 * t31 * t54 * t95) / 2.0f)) / 4.0f +
-                            (MU_0 * W_x * t7 * t54 * (-t52 * t95 + t16 * t52 * t123 + (t16 * t31 * t54 * t95) / 2.0f)) / 4.0f -
-                            MU_0 * W_x * t7 * t31 * t56 * (t12 - t99) * (3.0f / 8.0f) -
-                            MU_0 * W_y * t7 * t31 * t56 * (t13 - t103) * (3.0f / 8.0f) -
-                            MU_0 * W_z * t7 * t31 * t56 * (t14 - t107) * (3.0f / 8.0f)) *
-                           2.0f;
-
-    float t108 = t25 * t55 * t96;
-    V_rx_derivative_x[2] = F_2 * G_ina * N * S * PI *
-                           copysignf(1.0f, MU_0 * W_x * t7 * t57 * (t12 - t100) * (-1.0f / 4.0f) -
-                                               (MU_0 * W_y * t7 * t57 * (t13 - t104)) / 4.0f -
-                                               (MU_0 * W_z * t7 * t57 * (t14 - t108)) / 4.0f) *
-                           ((MU_0 * W_y * t7 * t57 * (t21 * t55 * t124 + (t21 * t32 * t57 * t96) / 2.0f)) / 4.0f +
-                            (MU_0 * W_z * t7 * t57 * (t25 * t55 * t124 + (t25 * t32 * t57 * t96) / 2.0f)) / 4.0f +
-                            (MU_0 * W_x * t7 * t57 * (-t55 * t96 + t17 * t55 * t124 + (t17 * t32 * t57 * t96) / 2.0f)) / 4.0f -
-                            MU_0 * W_x * t7 * t32 * t59 * (t12 - t100) * (3.0f / 8.0f) -
-                            MU_0 * W_y * t7 * t32 * t59 * (t13 - t104) * (3.0f / 8.0f) -
-                            MU_0 * W_z * t7 * t32 * t59 * (t14 - t108) * (3.0f / 8.0f)) *
-                           2.0f;
-
-    float t109 = t26 * t58 * t97;
-    V_rx_derivative_x[3] = F_3 * G_ina * N * S * PI *
-                           copysignf(1.0f, MU_0 * W_x * t7 * t60 * (t12 - t101) * (-1.0f / 4.0f) -
-                                               (MU_0 * W_y * t7 * t60 * (t13 - t105)) / 4.0f -
-                                               (MU_0 * W_z * t7 * t60 * (t14 - t109)) / 4.0f) *
-                           ((MU_0 * W_y * t7 * t60 * (t22 * t58 * t125 + (t22 * t33 * t60 * t97) / 2.0f)) / 4.0f +
-                            (MU_0 * W_z * t7 * t60 * (t26 * t58 * t125 + (t26 * t33 * t60 * t97) / 2.0f)) / 4.0f +
-                            (MU_0 * W_x * t7 * t60 * (-t58 * t97 + t18 * t58 * t125 + (t18 * t33 * t60 * t97) / 2.0f)) / 4.0f -
-                            MU_0 * W_x * t7 * t33 * t61 * (t12 - t101) * (3.0f / 8.0f) -
-                            MU_0 * W_y * t7 * t33 * t61 * (t13 - t105) * (3.0f / 8.0f) -
-                            MU_0 * W_z * t7 * t33 * t61 * (t14 - t109) * (3.0f / 8.0f)) *
-                           2.0f;
-}
-
-void V_rx_derivate_y_function(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
-                              float N, float current, float S, float G_ina,
-                              float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
-                              float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
-                              float F_0, float F_1, float F_2, float F_3, float V_rx_derivate_y[4])
-{
-    float t2 = A0_y * 2.0f;
-    float t3 = A1_y * 2.0f;
-    float t4 = A2_y * 2.0f;
-    float t5 = A3_y * 2.0f;
-    float t6 = T_y * 2.0f;
-    float t7 = 1.0f / PI;
-    float t8 = -T_x;
-    float t9 = -T_y;
-    float t11 = -T_z;
-    float t12 = N * S * W_x * current;
-    float t13 = N * S * W_y * current;
-    float t14 = N * S * W_z * current;
-    float t10 = -t6;
-    float t15 = A0_x + t8;
-    float t16 = A1_x + t8;
-    float t17 = A2_x + t8;
-    float t18 = A3_x + t8;
-    float t19 = A0_y + t9;
-    float t20 = A1_y + t9;
-    float t21 = A2_y + t9;
-    float t22 = A3_y + t9;
-    float t23 = A0_z + t11;
-    float t24 = A1_z + t11;
-    float t25 = A2_z + t11;
-    float t26 = A3_z + t11;
-    float t30 = t2 + t10;
-    float t31 = t3 + t10;
-    float t32 = t4 + t10;
-    float t33 = t5 + t10;
-    float t34 = t15 * t15;
-    float t35 = t16 * t16;
-    float t36 = t17 * t17;
-    float t37 = t18 * t18;
-    float t38 = t19 * t19;
-    float t39 = t20 * t20;
-    float t40 = t21 * t21;
-    float t41 = t22 * t22;
-    float t42 = t23 * t23;
-    float t43 = t24 * t24;
-    float t44 = t25 * t25;
-    float t45 = t26 * t26;
-    float t46 = t34 + t38 + t42;
-    float t47 = t35 + t39 + t43;
-    float t48 = t36 + t40 + t44;
-    float t49 = t37 + t41 + t45;
-    float t50 = 1.0f / sqrtf(t46);
-    float t52 = 1.0f / sqrtf(t47);
-    float t55 = 1.0f / sqrtf(t48);
-    float t58 = 1.0f / sqrtf(t49);
-    float t51 = t50 * t50 * t50;
-    float t53 = t50 * t50 * t50 * t50 * t50;
-    float t54 = t52 * t52 * t52;
-    float t56 = t52 * t52 * t52 * t52 * t52;
-    float t57 = t55 * t55 * t55;
-    float t59 = t55 * t55 * t55 * t55 * t55;
-    float t60 = t58 * t58 * t58;
-    float t61 = t58 * t58 * t58 * t58 * t58;
-    float t62 = t13 * t50 * 3.0f;
-    float t63 = t13 * t52 * 3.0f;
-    float t64 = t13 * t55 * 3.0f;
-    float t65 = t13 * t58 * 3.0f;
-    float t70 = t12 * t15 * t50 * 3.0f;
-    float t71 = t12 * t16 * t52 * 3.0f;
-    float t72 = t12 * t17 * t55 * 3.0f;
-    float t73 = t12 * t18 * t58 * 3.0f;
-    float t78 = t14 * t23 * t50 * 3.0f;
-    float t79 = t14 * t24 * t52 * 3.0f;
-    float t80 = t14 * t25 * t55 * 3.0f;
-    float t81 = t14 * t26 * t58 * 3.0f;
-    float t66 = -t62;
-    float t67 = -t63;
-    float t68 = -t64;
-    float t69 = -t65;
-    float t74 = t19 * t62;
-    float t75 = t20 * t63;
-    float t76 = t21 * t64;
-    float t77 = t22 * t65;
-    float t82 = t12 * t15 * t30 * t51 * (3.0f / 2.0f);
-    float t83 = t12 * t16 * t31 * t54 * (3.0f / 2.0f);
-    float t84 = t12 * t17 * t32 * t57 * (3.0f / 2.0f);
-    float t85 = t12 * t18 * t33 * t60 * (3.0f / 2.0f);
-    float t86 = t13 * t19 * t30 * t51 * (3.0f / 2.0f);
-    float t87 = t13 * t20 * t31 * t54 * (3.0f / 2.0f);
-    float t88 = t13 * t21 * t32 * t57 * (3.0f / 2.0f);
-    float t89 = t13 * t22 * t33 * t60 * (3.0f / 2.0f);
-    float t90 = t14 * t23 * t30 * t51 * (3.0f / 2.0f);
-    float t91 = t14 * t24 * t31 * t54 * (3.0f / 2.0f);
-    float t92 = t14 * t25 * t32 * t57 * (3.0f / 2.0f);
-    float t93 = t14 * t26 * t33 * t60 * (3.0f / 2.0f);
-    float t94 = t70 + t74 + t78;
-    float t95 = t71 + t75 + t79;
-    float t96 = t72 + t76 + t80;
-    float t97 = t73 + t77 + t81;
-    float t122 = t66 + t82 + t86 + t90;
-    float t123 = t67 + t83 + t87 + t91;
-    float t124 = t68 + t84 + t88 + t92;
-    float t125 = t69 + t85 + t89 + t93;
-    float t98 = t15 * t50 * t94;
-    float t99 = t16 * t52 * t95;
-    float t100 = t17 * t55 * t96;
-    float t101 = t18 * t58 * t97;
-    float t102 = t19 * t50 * t94;
-    float t103 = t20 * t52 * t95;
-    float t104 = t21 * t55 * t96;
-    float t105 = t22 * t58 * t97;
-    float t106 = t23 * t50 * t94;
-
-    V_rx_derivate_y[0] = F_0 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t51 * (t12 - t98) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t51 * (t13 - t102)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t51 * (t14 - t106)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t51 * (t15 * t50 * t122 + (t15 * t30 * t51 * t94) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t51 * (t23 * t50 * t122 + (t23 * t30 * t51 * t94) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t51 * (-t50 * t94 + t19 * t50 * t122 + (t19 * t30 * t51 * t94) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t30 * t53 * (t12 - t98) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t30 * t53 * (t13 - t102) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t30 * t53 * (t14 - t106) * (3.0f / 8.0f)) *
-                         2.0f;
-
-    float t107 = t24 * t52 * t95;
-    V_rx_derivate_y[1] = F_1 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t54 * (t12 - t99) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t54 * (t13 - t103)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t54 * (t14 - t107)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t54 * (t16 * t52 * t123 + (t16 * t31 * t54 * t95) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t54 * (t24 * t52 * t123 + (t24 * t31 * t54 * t95) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t54 * (-t52 * t95 + t20 * t52 * t123 + (t20 * t31 * t54 * t95) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t31 * t56 * (t12 - t99) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t31 * t56 * (t13 - t103) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t31 * t56 * (t14 - t107) * (3.0f / 8.0f)) *
-                         2.0f;
-
-    float t108 = t25 * t55 * t96;
-    V_rx_derivate_y[2] = F_2 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t57 * (t12 - t100) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t57 * (t13 - t104)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t57 * (t14 - t108)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t57 * (t17 * t55 * t124 + (t17 * t32 * t57 * t96) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t57 * (t25 * t55 * t124 + (t25 * t32 * t57 * t96) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t57 * (-t55 * t96 + t21 * t55 * t124 + (t21 * t32 * t57 * t96) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t32 * t59 * (t12 - t100) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t32 * t59 * (t13 - t104) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t32 * t59 * (t14 - t108) * (3.0f / 8.0f)) *
-                         2.0f;
-
-    float t109 = t26 * t58 * t97;
-    V_rx_derivate_y[3] = F_3 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t60 * (t12 - t101) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t60 * (t13 - t105)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t60 * (t14 - t109)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t60 * (t18 * t58 * t125 + (t18 * t33 * t60 * t97) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t60 * (t26 * t58 * t125 + (t26 * t33 * t60 * t97) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t60 * (-t58 * t97 + t22 * t58 * t125 + (t22 * t33 * t60 * t97) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t33 * t61 * (t12 - t101) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t33 * t61 * (t13 - t105) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t33 * t61 * (t14 - t109) * (3.0f / 8.0f)) *
-                         2.0f;
-}
-
-void V_rx_derivate_z_function(float T_x, float T_y, float T_z, float W_x, float W_y, float W_z,
-                              float N, float current, float S, float G_ina,
-                              float A0_x, float A0_y, float A0_z, float A1_x, float A1_y, float A1_z,
-                              float A2_x, float A2_y, float A2_z, float A3_x, float A3_y, float A3_z,
-                              float F_0, float F_1, float F_2, float F_3, float V_rx_derivate_z[4])
-{
-    float t2 = A0_z * 2.0f;
-    float t3 = A1_z * 2.0f;
-    float t4 = A2_z * 2.0f;
-    float t5 = A3_z * 2.0f;
-    float t6 = T_z * 2.0f;
-    float t7 = 1.0f / PI;
-    float t8 = -T_x;
-    float t9 = -T_y;
-    float t10 = -T_z;
-    float t12 = N * S * W_x * current;
-    float t13 = N * S * W_y * current;
-    float t14 = N * S * W_z * current;
-    float t11 = -t6;
-    float t15 = A0_x + t8;
-    float t16 = A1_x + t8;
-    float t17 = A2_x + t8;
-    float t18 = A3_x + t8;
-    float t19 = A0_y + t9;
-    float t20 = A1_y + t9;
-    float t21 = A2_y + t9;
-    float t22 = A3_y + t9;
-    float t23 = A0_z + t10;
-    float t24 = A1_z + t10;
-    float t25 = A2_z + t10;
-    float t26 = A3_z + t10;
-    float t30 = t2 + t11;
-    float t31 = t3 + t11;
-    float t32 = t4 + t11;
-    float t33 = t5 + t11;
-    float t34 = t15 * t15;
-    float t35 = t16 * t16;
-    float t36 = t17 * t17;
-    float t37 = t18 * t18;
-    float t38 = t19 * t19;
-    float t39 = t20 * t20;
-    float t40 = t21 * t21;
-    float t41 = t22 * t22;
-    float t42 = t23 * t23;
-    float t43 = t24 * t24;
-    float t44 = t25 * t25;
-    float t45 = t26 * t26;
-    float t46 = t34 + t38 + t42;
-    float t47 = t35 + t39 + t43;
-    float t48 = t36 + t40 + t44;
-    float t49 = t37 + t41 + t45;
-    float t50 = 1.0f / sqrtf(t46);
-    float t52 = 1.0f / sqrtf(t47);
-    float t55 = 1.0f / sqrtf(t48);
-    float t58 = 1.0f / sqrtf(t49);
-    float t51 = t50 * t50 * t50;
-    float t53 = t50 * t50 * t50 * t50 * t50;
-    float t54 = t52 * t52 * t52;
-    float t56 = t52 * t52 * t52 * t52 * t52;
-    float t57 = t55 * t55 * t55;
-    float t59 = t55 * t55 * t55 * t55 * t55;
-    float t60 = t58 * t58 * t58;
-    float t61 = t58 * t58 * t58 * t58 * t58;
-    float t62 = t14 * t50 * 3.0f;
-    float t63 = t14 * t52 * 3.0f;
-    float t64 = t14 * t55 * 3.0f;
-    float t65 = t14 * t58 * 3.0f;
-    float t70 = t12 * t15 * t50 * 3.0f;
-    float t71 = t12 * t16 * t52 * 3.0f;
-    float t72 = t12 * t17 * t55 * 3.0f;
-    float t73 = t12 * t18 * t58 * 3.0f;
-    float t74 = t13 * t19 * t50 * 3.0f;
-    float t75 = t13 * t20 * t52 * 3.0f;
-    float t76 = t13 * t21 * t55 * 3.0f;
-    float t77 = t13 * t22 * t58 * 3.0f;
-    float t66 = -t62;
-    float t67 = -t63;
-    float t68 = -t64;
-    float t69 = -t65;
-    float t78 = t23 * t62;
-    float t79 = t24 * t63;
-    float t80 = t25 * t64;
-    float t81 = t26 * t65;
-    float t82 = t12 * t15 * t30 * t51 * (3.0f / 2.0f);
-    float t83 = t12 * t16 * t31 * t54 * (3.0f / 2.0f);
-    float t84 = t12 * t17 * t32 * t57 * (3.0f / 2.0f);
-    float t85 = t12 * t18 * t33 * t60 * (3.0f / 2.0f);
-    float t86 = t13 * t19 * t30 * t51 * (3.0f / 2.0f);
-    float t87 = t13 * t20 * t31 * t54 * (3.0f / 2.0f);
-    float t88 = t13 * t21 * t32 * t57 * (3.0f / 2.0f);
-    float t89 = t13 * t22 * t33 * t60 * (3.0f / 2.0f);
-    float t90 = t14 * t23 * t30 * t51 * (3.0f / 2.0f);
-    float t91 = t14 * t24 * t31 * t54 * (3.0f / 2.0f);
-    float t92 = t14 * t25 * t32 * t57 * (3.0f / 2.0f);
-    float t93 = t14 * t26 * t33 * t60 * (3.0f / 2.0f);
-    float t94 = t70 + t74 + t78;
-    float t95 = t71 + t75 + t79;
-    float t96 = t72 + t76 + t80;
-    float t97 = t73 + t77 + t81;
-    float t122 = t66 + t82 + t86 + t90;
-    float t123 = t67 + t83 + t87 + t91;
-    float t124 = t68 + t84 + t88 + t92;
-    float t125 = t69 + t85 + t89 + t93;
-    float t98 = t15 * t50 * t94;
-    float t99 = t16 * t52 * t95;
-    float t100 = t17 * t55 * t96;
-    float t101 = t18 * t58 * t97;
-    float t102 = t19 * t50 * t94;
-    float t103 = t20 * t52 * t95;
-    float t104 = t21 * t55 * t96;
-    float t105 = t22 * t58 * t97;
-    float t106 = t23 * t50 * t94;
-
-    V_rx_derivate_z[0] = F_0 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t51 * (t12 - t98) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t51 * (t13 - t102)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t51 * (t14 - t106)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t51 * (t15 * t50 * t122 + (t15 * t30 * t51 * t94) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t51 * (t19 * t50 * t122 + (t19 * t30 * t51 * t94) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t51 * (-t50 * t94 + t23 * t50 * t122 + (t23 * t30 * t51 * t94) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t30 * t53 * (t12 - t98) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t30 * t53 * (t13 - t102) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t30 * t53 * (t14 - t106) * (3.0f / 8.0f)) *
-                         2.0f;
-
-    float t107 = t24 * t52 * t95;
-    V_rx_derivate_z[1] = F_1 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t54 * (t12 - t99) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t54 * (t13 - t103)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t54 * (t14 - t107)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t54 * (t16 * t52 * t123 + (t16 * t31 * t54 * t95) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t54 * (t20 * t52 * t123 + (t20 * t31 * t54 * t95) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t54 * (-t52 * t95 + t24 * t52 * t123 + (t24 * t31 * t54 * t95) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t31 * t56 * (t12 - t99) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t31 * t56 * (t13 - t103) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t31 * t56 * (t14 - t107) * (3.0f / 8.0f)) *
-                         2.0f;
-
-    float t108 = t25 * t55 * t96;
-    V_rx_derivate_z[2] = F_2 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t57 * (t12 - t100) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t57 * (t13 - t104)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t57 * (t14 - t108)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t57 * (t17 * t55 * t124 + (t17 * t32 * t57 * t96) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t57 * (t21 * t55 * t124 + (t21 * t32 * t57 * t96) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t57 * (-t55 * t96 + t25 * t55 * t124 + (t25 * t32 * t57 * t96) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t32 * t59 * (t12 - t100) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t32 * t59 * (t13 - t104) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t32 * t59 * (t14 - t108) * (3.0f / 8.0f)) *
-                         2.0f;
-
-    float t109 = t26 * t58 * t97;
-    V_rx_derivate_z[3] = F_3 * G_ina * N * S * PI *
-                         copysignf(1.0f, MU_0 * W_x * t7 * t60 * (t12 - t101) * (-1.0f / 4.0f) -
-                                             (MU_0 * W_y * t7 * t60 * (t13 - t105)) / 4.0f -
-                                             (MU_0 * W_z * t7 * t60 * (t14 - t109)) / 4.0f) *
-                         ((MU_0 * W_x * t7 * t60 * (t18 * t58 * t125 + (t18 * t33 * t60 * t97) / 2.0f)) / 4.0f +
-                          (MU_0 * W_y * t7 * t60 * (t22 * t58 * t125 + (t22 * t33 * t60 * t97) / 2.0f)) / 4.0f +
-                          (MU_0 * W_z * t7 * t60 * (-t58 * t97 + t26 * t58 * t125 + (t26 * t33 * t60 * t97) / 2.0f)) / 4.0f -
-                          MU_0 * W_x * t7 * t33 * t61 * (t12 - t101) * (3.0f / 8.0f) -
-                          MU_0 * W_y * t7 * t33 * t61 * (t13 - t105) * (3.0f / 8.0f) -
-                          MU_0 * W_z * t7 * t33 * t61 * (t14 - t109) * (3.0f / 8.0f)) *
-                         2.0f;
-}
-
 void get_B_field_for_a_Anchor(float *anchor_pos,
                               float *tag_pos,
                               float *tag_or_versor,
@@ -658,34 +164,72 @@ float V_from_B(float *B_field, float *rx_versor, float resonanceFreq)
     return V;
 }
 
-float computeSTD(float *data, int arrayDimension)
+optimset opt = {
+    .precision = 5.0f,
+    .format = 0.0f,
+    .verbose = 0.0f,
+    .tol_x = 1e-3f,
+    .tol_y = 1e-3f,
+    .max_iter = 500.0f,
+    .max_eval = 500.0f,
+    .adaptive = 0.0f,
+    .scale = 1.0e-3f};
+
+const int problem_dimension = 3;
+
+struct Model
 {
-    float sum = 0.0;
-    float mean = 0.0;
-    float standardDeviation = 0.0;
+    real V[Num_Anchors];
+};
 
-    int i;
+void init_model(float *tag_pos_predicted, float *tag_or_versor, voltMeasurement_t *voltAnchor, model *mdl)
+{
+    // model *mdl = malloc(Num_Anchors * sizeof(model));
+    ///============================= initialization of the stuff for the magnetic simulation ==============================
 
-    for (i = 0; i < arrayDimension; i++)
+    // calculate the B field and the V for each coil in each positions
+    // this is the ground truth
+    real B_field[3];
+    real V[Num_Anchors];
+
+    for (int anchorIdx = 0; anchorIdx < Num_Anchors; anchorIdx++)
     {
-        sum += data[i];
+        real Anchor[3] = {voltAnchor->x[anchorIdx], voltAnchor->y[anchorIdx], voltAnchor->z[anchorIdx]};
+        get_B_field_for_a_Anchor(Anchor, tag_pos_predicted, tag_or_versor, B_field);
+        V[anchorIdx] = V_from_B(B_field, tag_or_versor, voltAnchor->resonanceFrequency[anchorIdx]);
+        mdl->V[anchorIdx] = V[anchorIdx];
+    }
+}
+
+int dimensions()
+{
+    return problem_dimension; // Tre componenti per la posizione (x, y, z)
+}
+
+void cost(const model *mdl, point *pnt)
+{
+    real costo = 0.0f;
+    for (int i = 0; i < Num_Anchors; i++)
+    {
+        costo += powf(mdl->V[i] - MeasuredVoltages_calibrated[i], 2);
     }
 
-    mean = sum / arrayDimension;
-
-    for (i = 0; i < arrayDimension; i++)
-        standardDeviation += powf(data[i] - mean, 2);
-
-    return sqrtf(standardDeviation / arrayDimension);
+    pnt->y = costo;
 }
+
+float estimated_position[3];
+float B_field_vector_1[3];
+float B_field_vector_2[3];
+float B_field_vector_3[3];
+float B_field_vector_4[3];
+
+point inp;
+point out;
+model mdl;
+simplex smpl;
 
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
-
-    float B_field_vector_1[3];
-    float B_field_vector_2[3];
-    float B_field_vector_3[3];
-    float B_field_vector_4[3];
 
     if (currentCalibrationTick < CALIBRATION_TIC_VALUE)
     {
@@ -774,48 +318,10 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
         }
         else
         {
+            // DEBUG_PRINT("sRunning case!!\n");
             // ------------------------------------ RUNNING CASE ------------------------------------
             // start_timer();     // start the timer.
             // it1 = get_timer(); // store current cycle-count in a local
-
-            if (number_of_samples_for_DynamicStd < window_size)
-            {
-                // setting the default std
-                Nero_std = voltAnchor->stdDev[0];
-                Giallo_std = voltAnchor->stdDev[1];
-                Grigio_std = voltAnchor->stdDev[2];
-                Rosso_std = voltAnchor->stdDev[3];
-
-                // accumulating the data for the std deviation
-                Nero_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[0];
-                Giallo_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[1];
-                Grigio_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[2];
-                Rosso_std_data[number_of_samples_for_DynamicStd] = voltAnchor->measuredVolt[3];
-
-                number_of_samples_for_DynamicStd += 1;
-            }
-            if (number_of_samples_for_DynamicStd == window_size)
-            {
-                // removing the first value
-                for (int i = 0; i < window_size - 1; i++)
-                {
-                    Nero_std_data[i] = Nero_std_data[i + 1];
-                    Giallo_std_data[i] = Giallo_std_data[i + 1];
-                    Grigio_std_data[i] = Grigio_std_data[i + 1];
-                    Rosso_std_data[i] = Rosso_std_data[i + 1];
-                }
-                // adding the new value
-                Nero_std_data[window_size - 1] = voltAnchor->measuredVolt[0];
-                Giallo_std_data[window_size - 1] = voltAnchor->measuredVolt[1];
-                Grigio_std_data[window_size - 1] = voltAnchor->measuredVolt[2];
-                Rosso_std_data[window_size - 1] = voltAnchor->measuredVolt[3];
-
-                // compute the std deviation
-                Nero_std = computeSTD(&Nero_std_data[0], window_size);
-                Giallo_std = computeSTD(&Giallo_std_data[0], window_size);
-                Grigio_std = computeSTD(&Grigio_std_data[0], window_size);
-                Rosso_std = computeSTD(&Rosso_std_data[0], window_size);
-            }
 
             // computing the B field for each of the 4 anchors
             point_t cfPosP;
@@ -834,232 +340,171 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             float tag_or_versor[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
             // float tag_or_versor[3] = {0.0, 0.0, 1.0};
 
-            T_orientation[0] = tag_or_versor[0];
-            T_orientation[1] = tag_or_versor[1];
-            T_orientation[2] = tag_or_versor[2];
+            // T_orientation[0] = tag_or_versor[0];
+            // T_orientation[1] = tag_or_versor[1];
+            // T_orientation[2] = tag_or_versor[2];
 
-            float anchor_1_pose[3] = {voltAnchor->x[0], voltAnchor->y[0], voltAnchor->z[0]};
-            float anchor_2_pose[3] = {voltAnchor->x[1], voltAnchor->y[1], voltAnchor->z[1]};
-            float anchor_3_pose[3] = {voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2]};
-            float anchor_4_pose[3] = {voltAnchor->x[3], voltAnchor->y[3], voltAnchor->z[3]};
+            // float anchor_1_pose[3] = {voltAnchor->x[0], voltAnchor->y[0], voltAnchor->z[0]};
+            // float anchor_2_pose[3] = {voltAnchor->x[1], voltAnchor->y[1], voltAnchor->z[1]};
+            // float anchor_3_pose[3] = {voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2]};
+            // float anchor_4_pose[3] = {voltAnchor->x[3], voltAnchor->y[3], voltAnchor->z[3]};
 
-            MeasuredVoltages_raw[0] = voltAnchor->measuredVolt[0];
-            MeasuredVoltages_raw[1] = voltAnchor->measuredVolt[1];
-            MeasuredVoltages_raw[2] = voltAnchor->measuredVolt[2];
-            MeasuredVoltages_raw[3] = voltAnchor->measuredVolt[3];
+            // MeasuredVoltages_raw[0] = voltAnchor->measuredVolt[0];
+            // MeasuredVoltages_raw[1] = voltAnchor->measuredVolt[1];
+            // MeasuredVoltages_raw[2] = voltAnchor->measuredVolt[2];
+            // MeasuredVoltages_raw[3] = voltAnchor->measuredVolt[3];
 
             MeasuredVoltages_calibrated[0] = (voltAnchor->measuredVolt[0] / CG_a1) / 0.995941558f;
             MeasuredVoltages_calibrated[1] = voltAnchor->measuredVolt[1] / CG_a2;
             MeasuredVoltages_calibrated[2] = voltAnchor->measuredVolt[2] / CG_a3;
             MeasuredVoltages_calibrated[3] = voltAnchor->measuredVolt[3] / CG_a4;
 
-            get_B_field_for_a_Anchor(anchor_1_pose, tag_pos_predicted, tag_or_versor, B_field_vector_1);
-            get_B_field_for_a_Anchor(anchor_2_pose, tag_pos_predicted, tag_or_versor, B_field_vector_2);
-            get_B_field_for_a_Anchor(anchor_3_pose, tag_pos_predicted, tag_or_versor, B_field_vector_3);
-            get_B_field_for_a_Anchor(anchor_4_pose, tag_pos_predicted, tag_or_versor, B_field_vector_4);
+            /// ------------------------- optimization  for computing position -------------------------
 
-            B[0][0] = B_field_vector_1[0];
-            B[0][1] = B_field_vector_1[1];
-            B[0][2] = B_field_vector_1[2];
+            const int n = problem_dimension;
 
-            B[1][0] = B_field_vector_2[0];
-            B[1][1] = B_field_vector_2[1];
-            B[1][2] = B_field_vector_2[2];
+            // initialize the initial optimization point
+            inp.x[0] = cfPos[0];
+            inp.x[1] = cfPos[1];
+            inp.x[2] = cfPos[2];
 
-            B[2][0] = B_field_vector_3[0];
-            B[2][1] = B_field_vector_3[1];
-            B[2][2] = B_field_vector_3[2];
+            // initialize model and simplex
 
-            B[3][0] = B_field_vector_4[0];
-            B[3][1] = B_field_vector_4[1];
-            B[3][2] = B_field_vector_4[2];
+            init_model(tag_pos_predicted, tag_or_versor, voltAnchor, &mdl);
 
-            // computing the V_rx for each of the 4 anchors
-            float V_rx_1 = V_from_B(B_field_vector_1, tag_or_versor, voltAnchor->resonanceFrequency[0]);
-            float V_rx_2 = V_from_B(B_field_vector_2, tag_or_versor, voltAnchor->resonanceFrequency[1]);
-            float V_rx_3 = V_from_B(B_field_vector_3, tag_or_versor, voltAnchor->resonanceFrequency[2]);
-            float V_rx_4 = V_from_B(B_field_vector_4, tag_or_versor, voltAnchor->resonanceFrequency[3]);
+            init_simplex(n, opt.scale, &inp, &smpl);
 
-            PredictedVoltages[0] = V_rx_1;
-            PredictedVoltages[1] = V_rx_2;
-            PredictedVoltages[2] = V_rx_3;
-            PredictedVoltages[3] = V_rx_4;
+            cost(&mdl, &inp);
 
-            // computing the V_rx_derivate for each of the 4 anchors
-            float V_rx_derivative_x[4];
-            float V_rx_derivative_y[4];
-            float V_rx_derivative_z[4];
+            // optimize model mdl, using settings opt, starting
+            // from simplex smpl, and save result to point out
+            nelder_mead(&mdl, &opt, &smpl, &out);
 
-            V_rx_derivate_x_function(
-                tag_pos_predicted[0], tag_pos_predicted[1], tag_pos_predicted[2],
-                tag_or_versor[0], tag_or_versor[1], tag_or_versor[2],
-                N_WOUNDS, CURRENT, COIL_SURFACE, G_INA,
-                voltAnchor->x[0], voltAnchor->y[0], voltAnchor->z[0],
-                voltAnchor->x[1], voltAnchor->y[1], voltAnchor->z[1],
-                voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2],
-                voltAnchor->x[3], voltAnchor->y[3], voltAnchor->z[3],
-                voltAnchor->resonanceFrequency[0], voltAnchor->resonanceFrequency[1], voltAnchor->resonanceFrequency[2], voltAnchor->resonanceFrequency[3],
-                V_rx_derivative_x);
+            estimated_position[0] = out.x[0];
+            estimated_position[1] = out.x[1];
+            estimated_position[2] = out.x[2];
+            // free_simplex(&smpl);
+            // free_point(&inp);
+            // free_point(&out);
+            // free(&mdl);
 
-            V_rx_derivate_y_function(
-                tag_pos_predicted[0], tag_pos_predicted[1], tag_pos_predicted[2],
-                tag_or_versor[0], tag_or_versor[1], tag_or_versor[2],
-                N_WOUNDS, CURRENT, COIL_SURFACE, G_INA,
-                voltAnchor->x[0], voltAnchor->y[0], voltAnchor->z[0],
-                voltAnchor->x[1], voltAnchor->y[1], voltAnchor->z[1],
-                voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2],
-                voltAnchor->x[3], voltAnchor->y[3], voltAnchor->z[3],
-                voltAnchor->resonanceFrequency[0], voltAnchor->resonanceFrequency[1], voltAnchor->resonanceFrequency[2], voltAnchor->resonanceFrequency[3],
-                V_rx_derivative_y);
+            /// ------------------------- optimization  for computing position -------------------------
 
-            V_rx_derivate_z_function(
-                tag_pos_predicted[0], tag_pos_predicted[1], tag_pos_predicted[2],
-                tag_or_versor[0], tag_or_versor[1], tag_or_versor[2],
-                N_WOUNDS, CURRENT, COIL_SURFACE, G_INA,
-                voltAnchor->x[0], voltAnchor->y[0], voltAnchor->z[0],
-                voltAnchor->x[1], voltAnchor->y[1], voltAnchor->z[1],
-                voltAnchor->x[2], voltAnchor->y[2], voltAnchor->z[2],
-                voltAnchor->x[3], voltAnchor->y[3], voltAnchor->z[3],
-                voltAnchor->resonanceFrequency[0], voltAnchor->resonanceFrequency[1], voltAnchor->resonanceFrequency[2], voltAnchor->resonanceFrequency[3],
-                V_rx_derivative_z);
+            // float error_x = ;
+            // float error_y = ;
+            // float error_z = ;
 
-            // it2 = get_timer() - it1; // Derive the cycle-count difference
-            // stop_timer();
+            float h_x[KC_STATE_DIM] = {0};
+            arm_matrix_instance_f32 H_x = {1, KC_STATE_DIM, h_x};
+            h_x[KC_STATE_X] = 1;
 
-            // Debugging stuff
-            for (int i = 0; i < 4; i++)
-            {
-                Derivative_x[i] = V_rx_derivative_x[i];
-                Derivative_y[i] = V_rx_derivative_y[i];
-                Derivative_z[i] = V_rx_derivative_z[i];
-            }
+            float h_y[KC_STATE_DIM] = {0};
+            arm_matrix_instance_f32 H_y = {1, KC_STATE_DIM, h_y};
+            h_y[KC_STATE_Y] = 1;
 
-            // create the matrix to update the kalman matrix
-            float h_1[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_1 = {1, KC_STATE_DIM, h_1};
-            h_1[KC_STATE_X] = V_rx_derivative_x[1];
-            h_1[KC_STATE_Y] = V_rx_derivative_y[1];
-            h_1[KC_STATE_Z] = V_rx_derivative_z[1];
+            float h_z[KC_STATE_DIM] = {0};
+            arm_matrix_instance_f32 H_z = {1, KC_STATE_DIM, h_z};
+            h_z[KC_STATE_Z] = 1;
 
-            float h_2[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_2 = {1, KC_STATE_DIM, h_2};
-            h_2[KC_STATE_X] = V_rx_derivative_x[2];
-            h_2[KC_STATE_Y] = V_rx_derivative_y[2];
-            h_2[KC_STATE_Z] = V_rx_derivative_z[2];
+            kalmanCoreScalarUpdate(this, &H_x, estimated_position[0] - cfPos[0], 0.05f);
+            kalmanCoreScalarUpdate(this, &H_y, estimated_position[1] - cfPos[1], 0.05f);
+            kalmanCoreScalarUpdate(this, &H_z, estimated_position[2] - cfPos[2], 0.05f);
 
-            float h_3[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_3 = {1, KC_STATE_DIM, h_3};
-            h_3[KC_STATE_X] = V_rx_derivative_x[3];
-            h_3[KC_STATE_Y] = V_rx_derivative_y[3];
-            h_3[KC_STATE_Z] = V_rx_derivative_z[3];
-
-            float h_4[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_4 = {1, KC_STATE_DIM, h_4};
-            h_4[KC_STATE_X] = V_rx_derivative_x[4];
-            h_4[KC_STATE_Y] = V_rx_derivative_y[4];
-            h_4[KC_STATE_Z] = V_rx_derivative_z[4];
-
-            float error_anchor1 = MeasuredVoltages_calibrated[0] - V_rx_1;
-            float error_anchor2 = MeasuredVoltages_calibrated[1] - V_rx_2;
-            float error_anchor3 = MeasuredVoltages_calibrated[2] - V_rx_3;
-            float error_anchor4 = MeasuredVoltages_calibrated[3] - V_rx_4;
-            E_1 = error_anchor1;
-            E_2 = error_anchor2;
-            E_3 = error_anchor3;
-            E_4 = error_anchor4;
-
-            kalmanCoreScalarUpdate(this, &H_1, error_anchor1, Nero_std);
-            kalmanCoreScalarUpdate(this, &H_2, error_anchor2, Giallo_std);
-            kalmanCoreScalarUpdate(this, &H_3, error_anchor3, Grigio_std);
-            kalmanCoreScalarUpdate(this, &H_4, error_anchor4, Rosso_std);
+            // DEBUG_PRINT("Estimated position x: %f,\n", (double)estimated_position[0]);
         }
     }
 }
 
-LOG_GROUP_START(Dipole_Model)
+LOG_GROUP_START(Optimization_Model)
+LOG_ADD(LOG_FLOAT, T_x, &estimated_position[0])
+LOG_ADD(LOG_FLOAT, T_y, &estimated_position[1])
+LOG_ADD(LOG_FLOAT, T_z, &estimated_position[2])
+LOG_GROUP_STOP(Optimization_Model)
 
-// LOG_ADD(LOG_UINT32, CPUCycle, &it2)
+// LOG_GROUP_START(Dipole_Model)
 
-LOG_ADD(LOG_FLOAT, D_x_0, &Derivative_x[0])
-LOG_ADD(LOG_FLOAT, D_x_1, &Derivative_x[1])
-LOG_ADD(LOG_FLOAT, D_x_2, &Derivative_x[2])
-LOG_ADD(LOG_FLOAT, D_x_3, &Derivative_x[3])
-LOG_ADD(LOG_FLOAT, D_y_0, &Derivative_y[0])
-LOG_ADD(LOG_FLOAT, D_y_1, &Derivative_y[1])
-LOG_ADD(LOG_FLOAT, D_y_2, &Derivative_y[2])
-LOG_ADD(LOG_FLOAT, D_y_3, &Derivative_y[3])
-LOG_ADD(LOG_FLOAT, D_z_0, &Derivative_z[0])
-LOG_ADD(LOG_FLOAT, D_z_1, &Derivative_z[1])
-LOG_ADD(LOG_FLOAT, D_z_2, &Derivative_z[2])
-LOG_ADD(LOG_FLOAT, D_z_3, &Derivative_z[3])
+// // LOG_ADD(LOG_UINT32, CPUCycle, &it2)
 
-LOG_ADD(LOG_FLOAT, CG_A1, &CG_a1)
-LOG_ADD(LOG_FLOAT, CG_A2, &CG_a2)
-LOG_ADD(LOG_FLOAT, CG_A3, &CG_a3)
-LOG_ADD(LOG_FLOAT, CG_A4, &CG_a4)
+// LOG_ADD(LOG_FLOAT, D_x_0, &Derivative_x[0])
+// LOG_ADD(LOG_FLOAT, D_x_1, &Derivative_x[1])
+// LOG_ADD(LOG_FLOAT, D_x_2, &Derivative_x[2])
+// LOG_ADD(LOG_FLOAT, D_x_3, &Derivative_x[3])
+// LOG_ADD(LOG_FLOAT, D_y_0, &Derivative_y[0])
+// LOG_ADD(LOG_FLOAT, D_y_1, &Derivative_y[1])
+// LOG_ADD(LOG_FLOAT, D_y_2, &Derivative_y[2])
+// LOG_ADD(LOG_FLOAT, D_y_3, &Derivative_y[3])
+// LOG_ADD(LOG_FLOAT, D_z_0, &Derivative_z[0])
+// LOG_ADD(LOG_FLOAT, D_z_1, &Derivative_z[1])
+// LOG_ADD(LOG_FLOAT, D_z_2, &Derivative_z[2])
+// LOG_ADD(LOG_FLOAT, D_z_3, &Derivative_z[3])
 
-LOG_ADD(LOG_FLOAT, C_R_1, &CalibrationRapport_anchor1)
-LOG_ADD(LOG_FLOAT, C_R_2, &CalibrationRapport_anchor2)
-LOG_ADD(LOG_FLOAT, C_R_3, &CalibrationRapport_anchor3)
-LOG_ADD(LOG_FLOAT, C_R_4, &CalibrationRapport_anchor4)
+// LOG_ADD(LOG_FLOAT, CG_A1, &CG_a1)
+// LOG_ADD(LOG_FLOAT, CG_A2, &CG_a2)
+// LOG_ADD(LOG_FLOAT, CG_A3, &CG_a3)
+// LOG_ADD(LOG_FLOAT, CG_A4, &CG_a4)
 
-// LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
-// LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
-// LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
+// LOG_ADD(LOG_FLOAT, C_R_1, &CalibrationRapport_anchor1)
+// LOG_ADD(LOG_FLOAT, C_R_2, &CalibrationRapport_anchor2)
+// LOG_ADD(LOG_FLOAT, C_R_3, &CalibrationRapport_anchor3)
+// LOG_ADD(LOG_FLOAT, C_R_4, &CalibrationRapport_anchor4)
 
-LOG_ADD(LOG_FLOAT, T_pred_x_fk, &T_pre_x_fk)
-LOG_ADD(LOG_FLOAT, T_pred_y_fk, &T_pre_y_fk)
-LOG_ADD(LOG_FLOAT, T_pred_z_fk, &T_pre_z_fk)
+// // LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
+// // LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
+// // LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
 
-LOG_ADD(LOG_FLOAT, T_or_0, &T_orientation[0])
-LOG_ADD(LOG_FLOAT, T_or_1, &T_orientation[1])
-LOG_ADD(LOG_FLOAT, T_or_2, &T_orientation[2])
+// LOG_ADD(LOG_FLOAT, T_pred_x_fk, &T_pre_x_fk)
+// LOG_ADD(LOG_FLOAT, T_pred_y_fk, &T_pre_y_fk)
+// LOG_ADD(LOG_FLOAT, T_pred_z_fk, &T_pre_z_fk)
 
-LOG_ADD(LOG_FLOAT, Er_1, &E_1)
-LOG_ADD(LOG_FLOAT, Er_2, &E_2)
-LOG_ADD(LOG_FLOAT, Er_3, &E_3)
-LOG_ADD(LOG_FLOAT, Er_4, &E_4)
+// LOG_ADD(LOG_FLOAT, T_or_0, &T_orientation[0])
+// LOG_ADD(LOG_FLOAT, T_or_1, &T_orientation[1])
+// LOG_ADD(LOG_FLOAT, T_or_2, &T_orientation[2])
 
-LOG_ADD(LOG_FLOAT, MC_V_0, &MeasuredVoltages_calibrated[0])
-LOG_ADD(LOG_FLOAT, MC_V_1, &MeasuredVoltages_calibrated[1])
-LOG_ADD(LOG_FLOAT, MC_V_2, &MeasuredVoltages_calibrated[2])
-LOG_ADD(LOG_FLOAT, MC_V_3, &MeasuredVoltages_calibrated[3])
+// LOG_ADD(LOG_FLOAT, Er_1, &E_1)
+// LOG_ADD(LOG_FLOAT, Er_2, &E_2)
+// LOG_ADD(LOG_FLOAT, Er_3, &E_3)
+// LOG_ADD(LOG_FLOAT, Er_4, &E_4)
 
-LOG_ADD(LOG_FLOAT, MR_V_0, &MeasuredVoltages_raw[0])
-LOG_ADD(LOG_FLOAT, MR_V_1, &MeasuredVoltages_raw[1])
-LOG_ADD(LOG_FLOAT, MR_V_2, &MeasuredVoltages_raw[2])
-LOG_ADD(LOG_FLOAT, MR_V_3, &MeasuredVoltages_raw[3])
+// LOG_ADD(LOG_FLOAT, MC_V_0, &MeasuredVoltages_calibrated[0])
+// LOG_ADD(LOG_FLOAT, MC_V_1, &MeasuredVoltages_calibrated[1])
+// LOG_ADD(LOG_FLOAT, MC_V_2, &MeasuredVoltages_calibrated[2])
+// LOG_ADD(LOG_FLOAT, MC_V_3, &MeasuredVoltages_calibrated[3])
 
-LOG_ADD(LOG_FLOAT, P_V_0, &PredictedVoltages[0])
-LOG_ADD(LOG_FLOAT, P_V_1, &PredictedVoltages[1])
-LOG_ADD(LOG_FLOAT, P_V_2, &PredictedVoltages[2])
-LOG_ADD(LOG_FLOAT, P_V_3, &PredictedVoltages[3])
+// LOG_ADD(LOG_FLOAT, MR_V_0, &MeasuredVoltages_raw[0])
+// LOG_ADD(LOG_FLOAT, MR_V_1, &MeasuredVoltages_raw[1])
+// LOG_ADD(LOG_FLOAT, MR_V_2, &MeasuredVoltages_raw[2])
+// LOG_ADD(LOG_FLOAT, MR_V_3, &MeasuredVoltages_raw[3])
 
-LOG_ADD(LOG_FLOAT, B_0_0, &B[0][0])
-LOG_ADD(LOG_FLOAT, B_0_1, &B[0][1])
-LOG_ADD(LOG_FLOAT, B_0_2, &B[0][2])
+// LOG_ADD(LOG_FLOAT, P_V_0, &PredictedVoltages[0])
+// LOG_ADD(LOG_FLOAT, P_V_1, &PredictedVoltages[1])
+// LOG_ADD(LOG_FLOAT, P_V_2, &PredictedVoltages[2])
+// LOG_ADD(LOG_FLOAT, P_V_3, &PredictedVoltages[3])
 
-LOG_ADD(LOG_FLOAT, B_1_0, &B[1][0])
-LOG_ADD(LOG_FLOAT, B_1_1, &B[1][1])
-LOG_ADD(LOG_FLOAT, B_1_2, &B[1][2])
+// LOG_ADD(LOG_FLOAT, B_0_0, &B[0][0])
+// LOG_ADD(LOG_FLOAT, B_0_1, &B[0][1])
+// LOG_ADD(LOG_FLOAT, B_0_2, &B[0][2])
 
-LOG_ADD(LOG_FLOAT, B_2_0, &B[2][0])
-LOG_ADD(LOG_FLOAT, B_2_1, &B[2][1])
-LOG_ADD(LOG_FLOAT, B_2_2, &B[2][2])
+// LOG_ADD(LOG_FLOAT, B_1_0, &B[1][0])
+// LOG_ADD(LOG_FLOAT, B_1_1, &B[1][1])
+// LOG_ADD(LOG_FLOAT, B_1_2, &B[1][2])
 
-LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
-LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
-LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
+// LOG_ADD(LOG_FLOAT, B_2_0, &B[2][0])
+// LOG_ADD(LOG_FLOAT, B_2_1, &B[2][1])
+// LOG_ADD(LOG_FLOAT, B_2_2, &B[2][2])
 
-LOG_ADD(LOG_FLOAT, A0_N_std, &Nero_std)
-LOG_ADD(LOG_FLOAT, A1_Gia_std, &Giallo_std)
-LOG_ADD(LOG_FLOAT, A2_Gr_std, &Grigio_std)
-LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
+// LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
+// LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
+// LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
 
-LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
+// LOG_ADD(LOG_FLOAT, A0_N_std, &Nero_std)
+// LOG_ADD(LOG_FLOAT, A1_Gia_std, &Giallo_std)
+// LOG_ADD(LOG_FLOAT, A2_Gr_std, &Grigio_std)
+// LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
 
-LOG_GROUP_STOP(Dipole_Model)
+// LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
 
-PARAM_GROUP_START(Dipole_Params)
-PARAM_ADD(PARAM_UINT16, calibTic, &currentCalibrationTick)
-PARAM_GROUP_STOP(Dipole_Params)
+// LOG_GROUP_STOP(Dipole_Model)
+
+// PARAM_GROUP_START(Dipole_Params)
+// PARAM_ADD(PARAM_UINT16, calibTic, &currentCalibrationTick)
+// PARAM_GROUP_STOP(Dipole_Params)

@@ -24,7 +24,7 @@
 #define CONFIG_DEBUG = y
 
 // System HZ
-#define SYSTEM_HZ 100
+#define SYSTEM_HZ 10
 #define SYSTEM_PERIOD_MS (1000 / SYSTEM_HZ)
 
 // ADC DMA configuration
@@ -534,7 +534,7 @@ static void mytask(void *param)
         }
 
         // Defining the delay between the executions
-        vTaskDelay(M2T(SYSTEM_PERIOD_MS));
+        vTaskDelay(M2T(10));
     }
 }
 
