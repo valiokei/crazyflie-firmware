@@ -7,6 +7,8 @@
 #include "estimator.h"
 #include "estimator_kalman.h"
 #include "nelder_mead.h"
+#include <stdlib.h>
+#include <time.h>
 
 #define G_INA 100.0f
 #define RAY 0.019f
@@ -16,6 +18,8 @@
 #define MU_0 1.25663706212e-06f
 #define PI 3.14159265359f
 #define Num_Anchors 4
+
+float Optimization_Model_STD = 0.01f;
 
 // #define start_timer() *((volatile uint32_t *)0xE0001000) = 0x40000001 // Enable CYCCNT register
 // #define stop_timer() *((volatile uint32_t *)0xE0001000) = 0x40000000  // Disable CYCCNT register
@@ -49,6 +53,8 @@ float T_pre_y_fk = 0.0f;
 float T_pre_z_fk = 0.0f;
 
 float T_orientation[3] = {0.0f, 0.0f, 0.0f};
+volatile float InputPoint[3] = {0.0f, 0.0f, 0.0f};
+volatile float noise = 0.0f;
 
 float default_CG_a1 = 1.3f; //  NERO
 float CG_a1 = 1.0f;         //  NERO
@@ -164,22 +170,48 @@ float V_from_B(float *B_field, float *rx_versor, float resonanceFreq)
     return V;
 }
 
+float generateGaussianNoise(float mean, float stddev)
+{
+    static int hasSpare = 0;
+    static float spare;
+
+    if (hasSpare)
+    {
+        hasSpare = 0;
+        return mean + stddev * spare;
+    }
+
+    hasSpare = 1;
+    static float u, v, s;
+    do
+    {
+        u = (rand() / ((float)RAND_MAX)) * 2.0 - 1.0;
+        v = (rand() / ((float)RAND_MAX)) * 2.0 - 1.0;
+        s = u * u + v * v;
+    } while (s >= 1.0 || s == 0.0);
+
+    s = sqrt(-2.0 * log(s) / s);
+    spare = v * s;
+    return mean + stddev * (u * s);
+}
+
 optimset opt = {
-    .precision = 5.0f,
+    .precision = 10.0f,
     .format = 0.0f,
     .verbose = 0.0f,
-    .tol_x = 1e-3f,
-    .tol_y = 1e-3f,
-    .max_iter = 500.0f,
-    .max_eval = 500.0f,
+    .tol_x = 1e-3f, // con 1e-4f fallisce
+    .tol_y = 1e-3f, // con 1e-4f fallisce
+    .max_iter = 5000.0f,
+    .max_eval = 5000.0f,
     .adaptive = 0.0f,
-    .scale = 1.0e-3f};
+    .scale = 1.0e-4f};
 
 const int problem_dimension = 3;
 
 struct Model
 {
-    real V[Num_Anchors];
+    real V_PREDICTED[Num_Anchors];
+    real V_Measured[Num_Anchors];
 };
 
 void init_model(float *tag_pos_predicted, float *tag_or_versor, voltMeasurement_t *voltAnchor, model *mdl)
@@ -196,8 +228,8 @@ void init_model(float *tag_pos_predicted, float *tag_or_versor, voltMeasurement_
     {
         real Anchor[3] = {voltAnchor->x[anchorIdx], voltAnchor->y[anchorIdx], voltAnchor->z[anchorIdx]};
         get_B_field_for_a_Anchor(Anchor, tag_pos_predicted, tag_or_versor, B_field);
-        V[anchorIdx] = V_from_B(B_field, tag_or_versor, voltAnchor->resonanceFrequency[anchorIdx]);
-        mdl->V[anchorIdx] = V[anchorIdx];
+        mdl->V_PREDICTED[anchorIdx] = V_from_B(B_field, tag_or_versor, voltAnchor->resonanceFrequency[anchorIdx]);
+        mdl->V_Measured[anchorIdx] = MeasuredVoltages_calibrated[anchorIdx];
     }
 }
 
@@ -211,13 +243,13 @@ void cost(const model *mdl, point *pnt)
     real costo = 0.0f;
     for (int i = 0; i < Num_Anchors; i++)
     {
-        costo += powf(mdl->V[i] - MeasuredVoltages_calibrated[i], 2);
+        costo += powf(mdl->V_PREDICTED[i] - mdl->V_Measured[i], 2);
     }
 
     pnt->y = costo;
 }
 
-float estimated_position[3];
+float estimated_position[3] = {0.01f, 0.01f, 0.01f};
 float B_field_vector_1[3];
 float B_field_vector_2[3];
 float B_field_vector_3[3];
@@ -230,6 +262,7 @@ simplex smpl;
 
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
+    srand(time(NULL));
 
     if (currentCalibrationTick < CALIBRATION_TIC_VALUE)
     {
@@ -354,7 +387,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             // MeasuredVoltages_raw[2] = voltAnchor->measuredVolt[2];
             // MeasuredVoltages_raw[3] = voltAnchor->measuredVolt[3];
 
-            MeasuredVoltages_calibrated[0] = (voltAnchor->measuredVolt[0] / CG_a1) / 0.995941558f;
+            MeasuredVoltages_calibrated[0] = voltAnchor->measuredVolt[0] / CG_a1; // / 0.995941558f;
             MeasuredVoltages_calibrated[1] = voltAnchor->measuredVolt[1] / CG_a2;
             MeasuredVoltages_calibrated[2] = voltAnchor->measuredVolt[2] / CG_a3;
             MeasuredVoltages_calibrated[3] = voltAnchor->measuredVolt[3] / CG_a4;
@@ -362,17 +395,39 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             /// ------------------------- optimization  for computing position -------------------------
 
             const int n = problem_dimension;
+            noise = generateGaussianNoise(0.0f, 0.05f);
+            // initialize the initial optimization point with the current position estimated by the kalman filter
+            // inp.x[0] = cfPos[0]+ noise;
+            // inp.x[1] = cfPos[1]+ noise;
+            // inp.x[2] = cfPos[2]+ noise;
 
-            // initialize the initial optimization point
-            inp.x[0] = cfPos[0];
-            inp.x[1] = cfPos[1];
-            inp.x[2] = cfPos[2];
+            // initialize the initial optimization point with the current position estimated by the kalman filter adding some gaussian noise
+
+            // inp.x[0] = cfPos[0] + 0.02f * arm_sin_f32(2 * PI * 0.1f * pos_idx);
+            // inp.x[1] = cfPos[1] + 0.02f * arm_sin_f32(2 * PI * 0.1f * pos_idx);
+            // inp.x[2] = cfPos[2] + 0.02f * arm_sin_f32(2 * PI * 0.1f * pos_idx);
+
+            // initialize the initial optimization point with the current position estimated by the last step of the optimization
+            // DEBUG_PRINT("Estimated position x: %f,\n", generateGaussianNoise(0.05f, 0.01f));
+
+            inp.x[0] = estimated_position[0] + noise;
+            inp.x[1] = estimated_position[1] + noise;
+            inp.x[2] = estimated_position[2] + noise;
+            // inp.x[0] = noise;
+            // inp.x[1] = noise;
+            // inp.x[2] = noise;
+
+            InputPoint[0] = inp.x[0];
+            InputPoint[1] = inp.x[1];
+            InputPoint[2] = inp.x[2];
 
             // initialize model and simplex
 
             init_model(tag_pos_predicted, tag_or_versor, voltAnchor, &mdl);
 
             init_simplex(n, opt.scale, &inp, &smpl);
+
+            float measuredVolt[Num_Anchors] = {MeasuredVoltages_calibrated[0], MeasuredVoltages_calibrated[1], MeasuredVoltages_calibrated[2], MeasuredVoltages_calibrated[3]};
 
             cost(&mdl, &inp);
 
@@ -406,9 +461,9 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             arm_matrix_instance_f32 H_z = {1, KC_STATE_DIM, h_z};
             h_z[KC_STATE_Z] = 1;
 
-            kalmanCoreScalarUpdate(this, &H_x, estimated_position[0] - cfPos[0], 0.05f);
-            kalmanCoreScalarUpdate(this, &H_y, estimated_position[1] - cfPos[1], 0.05f);
-            kalmanCoreScalarUpdate(this, &H_z, estimated_position[2] - cfPos[2], 0.05f);
+            // kalmanCoreScalarUpdate(this, &H_x, estimated_position[0] - cfPos[0], Optimization_Model_STD);
+            // kalmanCoreScalarUpdate(this, &H_y, estimated_position[1] - cfPos[1], Optimization_Model_STD);
+            // kalmanCoreScalarUpdate(this, &H_z, estimated_position[2] - cfPos[2], Optimization_Model_STD);
 
             // DEBUG_PRINT("Estimated position x: %f,\n", (double)estimated_position[0]);
         }
@@ -419,91 +474,101 @@ LOG_GROUP_START(Optimization_Model)
 LOG_ADD(LOG_FLOAT, T_x, &estimated_position[0])
 LOG_ADD(LOG_FLOAT, T_y, &estimated_position[1])
 LOG_ADD(LOG_FLOAT, T_z, &estimated_position[2])
+
+LOG_ADD(LOG_FLOAT, Inpt_x, &InputPoint[0])
+LOG_ADD(LOG_FLOAT, Inpt_y, &InputPoint[1])
+LOG_ADD(LOG_FLOAT, Inpt_z, &InputPoint[2])
+LOG_ADD(LOG_FLOAT, noise, &noise)
+
 LOG_GROUP_STOP(Optimization_Model)
 
-// LOG_GROUP_START(Dipole_Model)
+PARAM_GROUP_START(Opt_Model_Param)
+PARAM_ADD(PARAM_FLOAT, Opt_STD, &Optimization_Model_STD)
+PARAM_GROUP_STOP(Opt_Model_Param)
 
-// // LOG_ADD(LOG_UINT32, CPUCycle, &it2)
+LOG_GROUP_START(Dipole_Model)
 
-// LOG_ADD(LOG_FLOAT, D_x_0, &Derivative_x[0])
-// LOG_ADD(LOG_FLOAT, D_x_1, &Derivative_x[1])
-// LOG_ADD(LOG_FLOAT, D_x_2, &Derivative_x[2])
-// LOG_ADD(LOG_FLOAT, D_x_3, &Derivative_x[3])
-// LOG_ADD(LOG_FLOAT, D_y_0, &Derivative_y[0])
-// LOG_ADD(LOG_FLOAT, D_y_1, &Derivative_y[1])
-// LOG_ADD(LOG_FLOAT, D_y_2, &Derivative_y[2])
-// LOG_ADD(LOG_FLOAT, D_y_3, &Derivative_y[3])
-// LOG_ADD(LOG_FLOAT, D_z_0, &Derivative_z[0])
-// LOG_ADD(LOG_FLOAT, D_z_1, &Derivative_z[1])
-// LOG_ADD(LOG_FLOAT, D_z_2, &Derivative_z[2])
-// LOG_ADD(LOG_FLOAT, D_z_3, &Derivative_z[3])
+// LOG_ADD(LOG_UINT32, CPUCycle, &it2)
 
-// LOG_ADD(LOG_FLOAT, CG_A1, &CG_a1)
-// LOG_ADD(LOG_FLOAT, CG_A2, &CG_a2)
-// LOG_ADD(LOG_FLOAT, CG_A3, &CG_a3)
-// LOG_ADD(LOG_FLOAT, CG_A4, &CG_a4)
+LOG_ADD(LOG_FLOAT, D_x_0, &Derivative_x[0])
+LOG_ADD(LOG_FLOAT, D_x_1, &Derivative_x[1])
+LOG_ADD(LOG_FLOAT, D_x_2, &Derivative_x[2])
+LOG_ADD(LOG_FLOAT, D_x_3, &Derivative_x[3])
+LOG_ADD(LOG_FLOAT, D_y_0, &Derivative_y[0])
+LOG_ADD(LOG_FLOAT, D_y_1, &Derivative_y[1])
+LOG_ADD(LOG_FLOAT, D_y_2, &Derivative_y[2])
+LOG_ADD(LOG_FLOAT, D_y_3, &Derivative_y[3])
+LOG_ADD(LOG_FLOAT, D_z_0, &Derivative_z[0])
+LOG_ADD(LOG_FLOAT, D_z_1, &Derivative_z[1])
+LOG_ADD(LOG_FLOAT, D_z_2, &Derivative_z[2])
+LOG_ADD(LOG_FLOAT, D_z_3, &Derivative_z[3])
 
-// LOG_ADD(LOG_FLOAT, C_R_1, &CalibrationRapport_anchor1)
-// LOG_ADD(LOG_FLOAT, C_R_2, &CalibrationRapport_anchor2)
-// LOG_ADD(LOG_FLOAT, C_R_3, &CalibrationRapport_anchor3)
-// LOG_ADD(LOG_FLOAT, C_R_4, &CalibrationRapport_anchor4)
+LOG_ADD(LOG_FLOAT, CG_A1, &CG_a1)
+LOG_ADD(LOG_FLOAT, CG_A2, &CG_a2)
+LOG_ADD(LOG_FLOAT, CG_A3, &CG_a3)
+LOG_ADD(LOG_FLOAT, CG_A4, &CG_a4)
 
-// // LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
-// // LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
-// // LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
+LOG_ADD(LOG_FLOAT, C_R_1, &CalibrationRapport_anchor1)
+LOG_ADD(LOG_FLOAT, C_R_2, &CalibrationRapport_anchor2)
+LOG_ADD(LOG_FLOAT, C_R_3, &CalibrationRapport_anchor3)
+LOG_ADD(LOG_FLOAT, C_R_4, &CalibrationRapport_anchor4)
 
-// LOG_ADD(LOG_FLOAT, T_pred_x_fk, &T_pre_x_fk)
-// LOG_ADD(LOG_FLOAT, T_pred_y_fk, &T_pre_y_fk)
-// LOG_ADD(LOG_FLOAT, T_pred_z_fk, &T_pre_z_fk)
+// LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
+// LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
+// LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
 
-// LOG_ADD(LOG_FLOAT, T_or_0, &T_orientation[0])
-// LOG_ADD(LOG_FLOAT, T_or_1, &T_orientation[1])
-// LOG_ADD(LOG_FLOAT, T_or_2, &T_orientation[2])
+LOG_ADD(LOG_FLOAT, T_pred_x_fk, &T_pre_x_fk)
+LOG_ADD(LOG_FLOAT, T_pred_y_fk, &T_pre_y_fk)
+LOG_ADD(LOG_FLOAT, T_pred_z_fk, &T_pre_z_fk)
 
-// LOG_ADD(LOG_FLOAT, Er_1, &E_1)
-// LOG_ADD(LOG_FLOAT, Er_2, &E_2)
-// LOG_ADD(LOG_FLOAT, Er_3, &E_3)
-// LOG_ADD(LOG_FLOAT, Er_4, &E_4)
+LOG_ADD(LOG_FLOAT, T_or_0, &T_orientation[0])
+LOG_ADD(LOG_FLOAT, T_or_1, &T_orientation[1])
+LOG_ADD(LOG_FLOAT, T_or_2, &T_orientation[2])
 
-// LOG_ADD(LOG_FLOAT, MC_V_0, &MeasuredVoltages_calibrated[0])
-// LOG_ADD(LOG_FLOAT, MC_V_1, &MeasuredVoltages_calibrated[1])
-// LOG_ADD(LOG_FLOAT, MC_V_2, &MeasuredVoltages_calibrated[2])
-// LOG_ADD(LOG_FLOAT, MC_V_3, &MeasuredVoltages_calibrated[3])
+LOG_ADD(LOG_FLOAT, Er_1, &E_1)
+LOG_ADD(LOG_FLOAT, Er_2, &E_2)
+LOG_ADD(LOG_FLOAT, Er_3, &E_3)
+LOG_ADD(LOG_FLOAT, Er_4, &E_4)
 
-// LOG_ADD(LOG_FLOAT, MR_V_0, &MeasuredVoltages_raw[0])
-// LOG_ADD(LOG_FLOAT, MR_V_1, &MeasuredVoltages_raw[1])
-// LOG_ADD(LOG_FLOAT, MR_V_2, &MeasuredVoltages_raw[2])
-// LOG_ADD(LOG_FLOAT, MR_V_3, &MeasuredVoltages_raw[3])
+LOG_ADD(LOG_FLOAT, MC_V_0, &MeasuredVoltages_calibrated[0])
+LOG_ADD(LOG_FLOAT, MC_V_1, &MeasuredVoltages_calibrated[1])
+LOG_ADD(LOG_FLOAT, MC_V_2, &MeasuredVoltages_calibrated[2])
+LOG_ADD(LOG_FLOAT, MC_V_3, &MeasuredVoltages_calibrated[3])
 
-// LOG_ADD(LOG_FLOAT, P_V_0, &PredictedVoltages[0])
-// LOG_ADD(LOG_FLOAT, P_V_1, &PredictedVoltages[1])
-// LOG_ADD(LOG_FLOAT, P_V_2, &PredictedVoltages[2])
-// LOG_ADD(LOG_FLOAT, P_V_3, &PredictedVoltages[3])
+LOG_ADD(LOG_FLOAT, MR_V_0, &MeasuredVoltages_raw[0])
+LOG_ADD(LOG_FLOAT, MR_V_1, &MeasuredVoltages_raw[1])
+LOG_ADD(LOG_FLOAT, MR_V_2, &MeasuredVoltages_raw[2])
+LOG_ADD(LOG_FLOAT, MR_V_3, &MeasuredVoltages_raw[3])
 
-// LOG_ADD(LOG_FLOAT, B_0_0, &B[0][0])
-// LOG_ADD(LOG_FLOAT, B_0_1, &B[0][1])
-// LOG_ADD(LOG_FLOAT, B_0_2, &B[0][2])
+LOG_ADD(LOG_FLOAT, P_V_0, &PredictedVoltages[0])
+LOG_ADD(LOG_FLOAT, P_V_1, &PredictedVoltages[1])
+LOG_ADD(LOG_FLOAT, P_V_2, &PredictedVoltages[2])
+LOG_ADD(LOG_FLOAT, P_V_3, &PredictedVoltages[3])
 
-// LOG_ADD(LOG_FLOAT, B_1_0, &B[1][0])
-// LOG_ADD(LOG_FLOAT, B_1_1, &B[1][1])
-// LOG_ADD(LOG_FLOAT, B_1_2, &B[1][2])
+LOG_ADD(LOG_FLOAT, B_0_0, &B[0][0])
+LOG_ADD(LOG_FLOAT, B_0_1, &B[0][1])
+LOG_ADD(LOG_FLOAT, B_0_2, &B[0][2])
 
-// LOG_ADD(LOG_FLOAT, B_2_0, &B[2][0])
-// LOG_ADD(LOG_FLOAT, B_2_1, &B[2][1])
-// LOG_ADD(LOG_FLOAT, B_2_2, &B[2][2])
+LOG_ADD(LOG_FLOAT, B_1_0, &B[1][0])
+LOG_ADD(LOG_FLOAT, B_1_1, &B[1][1])
+LOG_ADD(LOG_FLOAT, B_1_2, &B[1][2])
 
-// LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
-// LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
-// LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
+LOG_ADD(LOG_FLOAT, B_2_0, &B[2][0])
+LOG_ADD(LOG_FLOAT, B_2_1, &B[2][1])
+LOG_ADD(LOG_FLOAT, B_2_2, &B[2][2])
 
-// LOG_ADD(LOG_FLOAT, A0_N_std, &Nero_std)
-// LOG_ADD(LOG_FLOAT, A1_Gia_std, &Giallo_std)
-// LOG_ADD(LOG_FLOAT, A2_Gr_std, &Grigio_std)
-// LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
+LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
+LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
+LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
 
-// LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
+LOG_ADD(LOG_FLOAT, A0_N_std, &Nero_std)
+LOG_ADD(LOG_FLOAT, A1_Gia_std, &Giallo_std)
+LOG_ADD(LOG_FLOAT, A2_Gr_std, &Grigio_std)
+LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
 
-// LOG_GROUP_STOP(Dipole_Model)
+LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
+
+LOG_GROUP_STOP(Dipole_Model)
 
 // PARAM_GROUP_START(Dipole_Params)
 // PARAM_ADD(PARAM_UINT16, calibTic, &currentCalibrationTick)

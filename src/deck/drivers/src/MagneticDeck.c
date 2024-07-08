@@ -118,16 +118,16 @@ float Rosso_Position[] = {-0.50, +0.25, 0};
 volatile float32_t MagneticStandardDeviation = Default_MagneticStandardDeviation;
 // -------  Debug variables -------
 
-float32_t NeroAmpl = 0;
-float32_t GialloAmpl = 0;
-float32_t GrigioAmpl = 0;
-float32_t RossoAmpl = 0;
+volatile float32_t NeroAmpl = 0.0f;
+volatile float32_t GialloAmpl = 0.0f;
+volatile float32_t GrigioAmpl = 0.0f;
+volatile float32_t RossoAmpl = 0.0f;
 
 // Distances
-volatile float32_t Nero_distance = 0;
-volatile float32_t Giallo_distance = 0;
-volatile float32_t Grigio_distance = 0;
-volatile float32_t Rosso_distance = 0;
+volatile float32_t Nero_distance = 0.0f;
+volatile float32_t Giallo_distance = 0.0f;
+volatile float32_t Grigio_distance = 0.0f;
+volatile float32_t Rosso_distance = 0.0f;
 
 // FFT
 volatile uint16_t bin_size = BIN_SIZE;
