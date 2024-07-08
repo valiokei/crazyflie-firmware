@@ -679,6 +679,10 @@ float computeSTD(float *data, int arrayDimension)
     return sqrtf(standardDeviation / arrayDimension);
 }
 
+#include "kalman_custom.h"
+extern ekf_t ekf0;
+static int cnt0 = 0;
+
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
 
@@ -825,8 +829,8 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             T_pre_y_fk = cfPos[1];
             T_pre_z_fk = cfPos[2];
 
-            float tag_pos_predicted[3] = {cfPos[0], cfPos[1], cfPos[2]};
-            // float tag_pos_predicted[3] = {0.0, 0.0, 0.0};
+            // float tag_pos_predicted[3] = {cfPos[0], cfPos[1], cfPos[2]};
+            float tag_pos_predicted[3] = {0.0, 0.0, 0.01};
 
             float RotationMatrix[3][3];
             // it would be the product between the rotation matrix and the initial [0,0,1] versor
@@ -935,130 +939,46 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             }
 
             // create the matrix to update the kalman matrix
-            float h_1[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_1 = {1, KC_STATE_DIM, h_1};
+            float h_0[3] = {0};
+            h_0[KC_STATE_X] = V_rx_derivative_x[0];
+            h_0[KC_STATE_Y] = V_rx_derivative_y[0];
+            h_0[KC_STATE_Z] = V_rx_derivative_z[0];
+
+            float h_1[3] = {0};
             h_1[KC_STATE_X] = V_rx_derivative_x[1];
             h_1[KC_STATE_Y] = V_rx_derivative_y[1];
             h_1[KC_STATE_Z] = V_rx_derivative_z[1];
 
-            float h_2[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_2 = {1, KC_STATE_DIM, h_2};
+            float h_2[3] = {0};
             h_2[KC_STATE_X] = V_rx_derivative_x[2];
             h_2[KC_STATE_Y] = V_rx_derivative_y[2];
             h_2[KC_STATE_Z] = V_rx_derivative_z[2];
 
-            float h_3[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_3 = {1, KC_STATE_DIM, h_3};
+            float h_3[3] = {0};
             h_3[KC_STATE_X] = V_rx_derivative_x[3];
             h_3[KC_STATE_Y] = V_rx_derivative_y[3];
             h_3[KC_STATE_Z] = V_rx_derivative_z[3];
 
-            float h_4[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_4 = {1, KC_STATE_DIM, h_4};
-            h_4[KC_STATE_X] = V_rx_derivative_x[4];
-            h_4[KC_STATE_Y] = V_rx_derivative_y[4];
-            h_4[KC_STATE_Z] = V_rx_derivative_z[4];
+            float error_anchor0 = MeasuredVoltages_calibrated[0] - V_rx_1;
+            float error_anchor1 = MeasuredVoltages_calibrated[1] - V_rx_2;
+            float error_anchor2 = MeasuredVoltages_calibrated[2] - V_rx_3;
+            float error_anchor3 = MeasuredVoltages_calibrated[3] - V_rx_4;
 
-            float error_anchor1 = MeasuredVoltages_calibrated[0] - V_rx_1;
-            float error_anchor2 = MeasuredVoltages_calibrated[1] - V_rx_2;
-            float error_anchor3 = MeasuredVoltages_calibrated[2] - V_rx_3;
-            float error_anchor4 = MeasuredVoltages_calibrated[3] - V_rx_4;
-            E_1 = error_anchor1;
-            E_2 = error_anchor2;
-            E_3 = error_anchor3;
-            E_4 = error_anchor4;
+            DEBUG_PRINT("h_0 = %f, %f, %f,  diff %f\n", h_0[0], h_0[1], h_0[2], error_anchor0);
+            kalman_custom_update(&ekf0, h_0, error_anchor0);
+            kalman_custom_update(&ekf0, h_1, error_anchor1);
+            kalman_custom_update(&ekf0, h_2, error_anchor2);
+            kalman_custom_update(&ekf0, h_3, error_anchor3);
+            // kalman_custom_predict(&ekf0);
 
-            kalmanCoreScalarUpdate(this, &H_1, error_anchor1, Nero_std);
-            kalmanCoreScalarUpdate(this, &H_2, error_anchor2, Giallo_std);
-            kalmanCoreScalarUpdate(this, &H_3, error_anchor3, Grigio_std);
-            kalmanCoreScalarUpdate(this, &H_4, error_anchor4, Rosso_std);
+            // if (cnt0++ % 10 == 0)
+            // {
+            DEBUG_PRINT("x: %f, y: %f, z: %f\n\n", ekf0.x[0], ekf0.x[1], ekf0.x[2]);
+            vTaskDelay(5);
+            // }
         }
     }
 }
-
-LOG_GROUP_START(Dipole_Model)
-
-// LOG_ADD(LOG_UINT32, CPUCycle, &it2)
-
-LOG_ADD(LOG_FLOAT, D_x_0, &Derivative_x[0])
-LOG_ADD(LOG_FLOAT, D_x_1, &Derivative_x[1])
-LOG_ADD(LOG_FLOAT, D_x_2, &Derivative_x[2])
-LOG_ADD(LOG_FLOAT, D_x_3, &Derivative_x[3])
-LOG_ADD(LOG_FLOAT, D_y_0, &Derivative_y[0])
-LOG_ADD(LOG_FLOAT, D_y_1, &Derivative_y[1])
-LOG_ADD(LOG_FLOAT, D_y_2, &Derivative_y[2])
-LOG_ADD(LOG_FLOAT, D_y_3, &Derivative_y[3])
-LOG_ADD(LOG_FLOAT, D_z_0, &Derivative_z[0])
-LOG_ADD(LOG_FLOAT, D_z_1, &Derivative_z[1])
-LOG_ADD(LOG_FLOAT, D_z_2, &Derivative_z[2])
-LOG_ADD(LOG_FLOAT, D_z_3, &Derivative_z[3])
-
-LOG_ADD(LOG_FLOAT, CG_A1, &CG_a1)
-LOG_ADD(LOG_FLOAT, CG_A2, &CG_a2)
-LOG_ADD(LOG_FLOAT, CG_A3, &CG_a3)
-LOG_ADD(LOG_FLOAT, CG_A4, &CG_a4)
-
-LOG_ADD(LOG_FLOAT, C_R_1, &CalibrationRapport_anchor1)
-LOG_ADD(LOG_FLOAT, C_R_2, &CalibrationRapport_anchor2)
-LOG_ADD(LOG_FLOAT, C_R_3, &CalibrationRapport_anchor3)
-LOG_ADD(LOG_FLOAT, C_R_4, &CalibrationRapport_anchor4)
-
-// LOG_ADD(LOG_FLOAT, T_pred_x, &T_pre_x)
-// LOG_ADD(LOG_FLOAT, T_pred_y, &T_pre_y)
-// LOG_ADD(LOG_FLOAT, T_pred_z, &T_pre_z)
-
-LOG_ADD(LOG_FLOAT, T_pred_x_fk, &T_pre_x_fk)
-LOG_ADD(LOG_FLOAT, T_pred_y_fk, &T_pre_y_fk)
-LOG_ADD(LOG_FLOAT, T_pred_z_fk, &T_pre_z_fk)
-
-LOG_ADD(LOG_FLOAT, T_or_0, &T_orientation[0])
-LOG_ADD(LOG_FLOAT, T_or_1, &T_orientation[1])
-LOG_ADD(LOG_FLOAT, T_or_2, &T_orientation[2])
-
-LOG_ADD(LOG_FLOAT, Er_1, &E_1)
-LOG_ADD(LOG_FLOAT, Er_2, &E_2)
-LOG_ADD(LOG_FLOAT, Er_3, &E_3)
-LOG_ADD(LOG_FLOAT, Er_4, &E_4)
-
-LOG_ADD(LOG_FLOAT, MC_V_0, &MeasuredVoltages_calibrated[0])
-LOG_ADD(LOG_FLOAT, MC_V_1, &MeasuredVoltages_calibrated[1])
-LOG_ADD(LOG_FLOAT, MC_V_2, &MeasuredVoltages_calibrated[2])
-LOG_ADD(LOG_FLOAT, MC_V_3, &MeasuredVoltages_calibrated[3])
-
-LOG_ADD(LOG_FLOAT, MR_V_0, &MeasuredVoltages_raw[0])
-LOG_ADD(LOG_FLOAT, MR_V_1, &MeasuredVoltages_raw[1])
-LOG_ADD(LOG_FLOAT, MR_V_2, &MeasuredVoltages_raw[2])
-LOG_ADD(LOG_FLOAT, MR_V_3, &MeasuredVoltages_raw[3])
-
-LOG_ADD(LOG_FLOAT, P_V_0, &PredictedVoltages[0])
-LOG_ADD(LOG_FLOAT, P_V_1, &PredictedVoltages[1])
-LOG_ADD(LOG_FLOAT, P_V_2, &PredictedVoltages[2])
-LOG_ADD(LOG_FLOAT, P_V_3, &PredictedVoltages[3])
-
-LOG_ADD(LOG_FLOAT, B_0_0, &B[0][0])
-LOG_ADD(LOG_FLOAT, B_0_1, &B[0][1])
-LOG_ADD(LOG_FLOAT, B_0_2, &B[0][2])
-
-LOG_ADD(LOG_FLOAT, B_1_0, &B[1][0])
-LOG_ADD(LOG_FLOAT, B_1_1, &B[1][1])
-LOG_ADD(LOG_FLOAT, B_1_2, &B[1][2])
-
-LOG_ADD(LOG_FLOAT, B_2_0, &B[2][0])
-LOG_ADD(LOG_FLOAT, B_2_1, &B[2][1])
-LOG_ADD(LOG_FLOAT, B_2_2, &B[2][2])
-
-LOG_ADD(LOG_FLOAT, B_3_0, &B[3][0])
-LOG_ADD(LOG_FLOAT, B_3_1, &B[3][1])
-LOG_ADD(LOG_FLOAT, B_3_2, &B[3][2])
-
-LOG_ADD(LOG_FLOAT, A0_N_std, &Nero_std)
-LOG_ADD(LOG_FLOAT, A1_Gia_std, &Giallo_std)
-LOG_ADD(LOG_FLOAT, A2_Gr_std, &Grigio_std)
-LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
-
-LOG_ADD(LOG_FLOAT, A3_R_std, &Rosso_std)
-
-LOG_GROUP_STOP(Dipole_Model)
 
 PARAM_GROUP_START(Dipole_Params)
 PARAM_ADD(PARAM_UINT16, calibTic, &currentCalibrationTick)

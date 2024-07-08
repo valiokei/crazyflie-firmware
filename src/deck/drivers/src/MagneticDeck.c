@@ -387,6 +387,9 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     estimatorEnqueueVolt(&volt);
 }
 
+#include "kalman_custom.h"
+ekf_t ekf0 = {0};
+
 static void mytask(void *param)
 {
     DEBUG_PRINT("Wait for system starting\n");
@@ -442,6 +445,17 @@ static void mytask(void *param)
     float32_t flattopCorrectionFactor = ARRAY_SIZE / sum;
     DEBUG_PRINT("Flattop Correction Factor: %f\n", flattopCorrectionFactor);
 
+    ekf0.R = 0.00001f;
+    ekf0.Q = 0.01f;
+
+    ekf0.x[0] = 0.01f;
+    ekf0.x[1] = 0.01f;
+    ekf0.x[2] = 0.01f;
+
+    ekf0.P[0][0] = 0.001f;
+    ekf0.P[1][1] = 0.001f;
+    ekf0.P[2][2] = 0.001f;
+
     while (1)
     {
         if (GainValue > 0)
@@ -470,64 +484,7 @@ static void mytask(void *param)
         }
         else
         {
-            // SOMETIME THE ADC IS BLOCKED, SO I NEED TO RESTART IT MANUALLY, SEEMS NOT APPENING ANYMORE
-            // ------------DEBUGGING STUFF--------------
 
-            // NON È NESSUNA DI QUESTE CONDIZIONI
-
-            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_OVR) != RESET)
-            // {
-            //     // Overrun occurred
-            //     // Take appropriate actions to handle the overrun
-            //     DEBUG_PRINT("Overrun occurred\n");
-            //     ADC_ClearFlag(ADC1, ADC_FLAG_OVR); // Clear the overrun flag
-            //     ADC_Done = 1;
-            // }
-            //             ADC_ClearFlag(ADC_n, ADC_FLAG_AWD);
-            // ADC_ClearFlag(ADC_n, ADC_FLAG_EOC);
-            // ADC_ClearFlag(ADC_n, ADC_FLAG_JEOC);
-            // ADC_ClearFlag(ADC_n, ADC_FLAG_JSTRT);
-            // ADC_ClearFlag(ADC_n, ADC_FLAG_STRT);
-            // ADC_ClearFlag(ADC_n, ADC_FLAG_OVR);
-            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_STRT) != RESET)
-            // {
-            //     DEBUG_PRINT("ADC_FLAG_STRT\n");
-            //     ADC_ClearFlag(ADC1, ADC_FLAG_STRT);
-            //     ADC_Done = 1;
-            // }
-            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) != RESET)
-            // {
-            //     DEBUG_PRINT("ADC_FLAG_EOC\n");
-            //     ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
-            //     ADC_Done = 1;
-            // }
-            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_JEOC) != RESET)
-            // {
-            //     DEBUG_PRINT("ADC_FLAG_JEOC\n");
-            //     ADC_ClearFlag(ADC1, ADC_FLAG_JEOC);
-            //     ADC_Done = 1;
-            // }
-            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_JSTRT) != RESET)
-            // {
-            //     DEBUG_PRINT("ADC_FLAG_JSTRT\n");
-            //     ADC_ClearFlag(ADC1, ADC_FLAG_JSTRT);
-            //     ADC_Done = 1;
-            // }
-            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_AWD) != RESET)
-            // {
-            //     DEBUG_PRINT("ADC_FLAG_AWD\n");
-            //     ADC_ClearFlag(ADC1, ADC_FLAG_AWD);
-            //     ADC_Done = 1;
-            // }
-            // if (ADC_GetFlagStatus(ADC1, ADC_FLAG_OVR) != RESET)
-            // {
-            //     DEBUG_PRINT("ADC_FLAG_OVR\n");
-            //     ADC_ClearFlag(ADC1, ADC_FLAG_OVR);
-            //     ADC_Done = 1;
-            // }
-
-            // Se si blocca l'adc si puo' usare questo
-            // non ha senso!!!
             ADC_Done = 1;
             DEBUG_PRINT("ADC_Done: %d\n", ADC_Done);
             // ma funziona cosi, non so poi come siano i dati
