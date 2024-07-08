@@ -937,27 +937,27 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             // create the matrix to update the kalman matrix
             float h_1[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_1 = {1, KC_STATE_DIM, h_1};
-            h_1[KC_STATE_X] = V_rx_derivative_x[1];
-            h_1[KC_STATE_Y] = V_rx_derivative_y[1];
-            h_1[KC_STATE_Z] = V_rx_derivative_z[1];
+            h_1[KC_STATE_X] = V_rx_derivative_x[0];
+            h_1[KC_STATE_Y] = V_rx_derivative_y[0];
+            h_1[KC_STATE_Z] = V_rx_derivative_z[0];
 
             float h_2[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_2 = {1, KC_STATE_DIM, h_2};
-            h_2[KC_STATE_X] = V_rx_derivative_x[2];
-            h_2[KC_STATE_Y] = V_rx_derivative_y[2];
-            h_2[KC_STATE_Z] = V_rx_derivative_z[2];
+            h_2[KC_STATE_X] = V_rx_derivative_x[1];
+            h_2[KC_STATE_Y] = V_rx_derivative_y[1];
+            h_2[KC_STATE_Z] = V_rx_derivative_z[1];
 
             float h_3[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_3 = {1, KC_STATE_DIM, h_3};
-            h_3[KC_STATE_X] = V_rx_derivative_x[3];
-            h_3[KC_STATE_Y] = V_rx_derivative_y[3];
-            h_3[KC_STATE_Z] = V_rx_derivative_z[3];
+            h_3[KC_STATE_X] = V_rx_derivative_x[2];
+            h_3[KC_STATE_Y] = V_rx_derivative_y[2];
+            h_3[KC_STATE_Z] = V_rx_derivative_z[2];
 
             float h_4[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_4 = {1, KC_STATE_DIM, h_4};
-            h_4[KC_STATE_X] = V_rx_derivative_x[4];
-            h_4[KC_STATE_Y] = V_rx_derivative_y[4];
-            h_4[KC_STATE_Z] = V_rx_derivative_z[4];
+            h_4[KC_STATE_X] = V_rx_derivative_x[3];
+            h_4[KC_STATE_Y] = V_rx_derivative_y[3];
+            h_4[KC_STATE_Z] = V_rx_derivative_z[3];
 
             float error_anchor1 = MeasuredVoltages_calibrated[0] - V_rx_1;
             float error_anchor2 = MeasuredVoltages_calibrated[1] - V_rx_2;
