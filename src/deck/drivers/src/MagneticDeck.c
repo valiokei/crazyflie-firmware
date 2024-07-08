@@ -90,28 +90,28 @@ float GainValue = 10;
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-float Nero_Position[] = {-0.50, -0.25, 0};
+float Nero_Position[] = {-0.47, -0.52 / 2, 0};
 #define Nero_Id 0
 
 #define GialloResFreq 203e3
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-float Giallo_Position[] = {+0.50, -0.25, 0};
+float Giallo_Position[] = {+0.47, -0.52 / 2, 0};
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-float Grigio_Position[] = {+0.50, +0.25, 0};
+float Grigio_Position[] = {+0.47, 0.52 / 2, 0};
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-float Rosso_Position[] = {-0.50, +0.25, 0};
+float Rosso_Position[] = {-0.47, 0.52 / 2, 0};
 #define Rosso_Id 3
 
 #define Default_MagneticStandardDeviation 0.0001f
