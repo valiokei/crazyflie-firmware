@@ -188,7 +188,18 @@ typedef struct voltMeasurement_s
   float measuredVolt[4];
   float resonanceFrequency[4];
   float stdDev[4];
+  float GainValue;
 } voltMeasurement_t;
+
+// typedef struct voltMeasurement_s
+// {
+//   uint8_t anchorId[4];
+//   float errors[4];
+//   float stdDev[4];
+//   float V_rx_derivative_x[4];
+//   float V_rx_derivative_y[4];
+//   float V_rx_derivative_z[4];
+// } voltMeasurement_t;
 
 typedef struct zDistance_s
 {
