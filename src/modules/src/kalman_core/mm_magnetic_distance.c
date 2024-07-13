@@ -46,8 +46,9 @@ float V_rx_derivative_y[4];
 float V_rx_derivative_z[4];
 
 // ------------------------------ DEBUG ------------------------------
-float PredictedVoltages[4];
-float MeasuredVoltages[4];
+static float PredictedVoltages[4];
+static float MeasuredVoltages[4];
+static int printFlagSTD_Type = 0;
 
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
@@ -81,13 +82,13 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             DEBUG_PRINT("calibration_Mean[2][2] = %f\n", (double)meanData_a3);
             DEBUG_PRINT("calibration_Mean[3][3] = %f\n", (double)meanData_a4);
 
-            point_t cfPosP;
-            estimatorKalmanGetEstimatedPos(&cfPosP);
+            // point_t cfPosP;
+            // estimatorKalmanGetEstimatedPos(&cfPosP);
             // float tag_pos_predicted_calibrated[3] = {cfPosP.x, cfPosP.y, cfPosP.z};
             float tag_pos_predicted_calibrated[3] = {0.0, 0.0, 0.0};
 
-            float RotationMatrix[3][3];
-            estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
+            // float RotationMatrix[3][3];
+            // estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
             // float tag_or_versor_calibrated[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
             float tag_or_versor_calibrated[3] = {0.0, 0.0, 1.0};
 
@@ -133,6 +134,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 DEBUG_PRINT("Resetting the Kalman filte after calibrationr\n");
                 paramSetInt(paramGetVarId("kalman", "resetEstimation"), 1);
                 currentCalibrationTick = currentCalibrationTick + 1;
+                // paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
             }
 
             // == == == == == == == == == == == == == == == == == == = ADAPTIVE STD COMPUTING -- NOT USED TO NOT OVERPARAMETRIZE THE PROBLEM == == == == == == == == == == == == == == == == == == == == == == == == == =
@@ -299,33 +301,38 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             else
             {
                 // ------------------- Case without adaptive std -------------------
-                // DEBUG_PRINT("NON Adaptive\n");
+                // DEBUG_PRINT("NON \n");
+                // if (printFlagSTD_Type == 0)
+                // {
+                //     DEBUG_PRINT("NON Adaptive\n");
+                //     printFlagSTD_Type = 1;
+                // }
 
-                kalmanCoreScalarUpdate(this, &H_1, error_anchor1, voltAnchor->stdDev[0]);
-                kalmanCoreScalarUpdate(this, &H_2, error_anchor2, voltAnchor->stdDev[1]);
-                kalmanCoreScalarUpdate(this, &H_3, error_anchor3, voltAnchor->stdDev[2]);
-                kalmanCoreScalarUpdate(this, &H_4, error_anchor4, voltAnchor->stdDev[3]);
+                // kalmanCoreScalarUpdate(this, &H_1, error_anchor1, voltAnchor->stdDev[0]);
+                // kalmanCoreScalarUpdate(this, &H_2, error_anchor2, voltAnchor->stdDev[1]);
+                // kalmanCoreScalarUpdate(this, &H_3, error_anchor3, voltAnchor->stdDev[2]);
+                // kalmanCoreScalarUpdate(this, &H_4, error_anchor4, voltAnchor->stdDev[3]);
             }
         }
     }
 }
 
-LOG_GROUP_START(Dipole_Model)
-// // LOG_ADD(LOG_UINT32, CPUCycle, &it2)
+// LOG_GROUP_START(Dipole_Model)
+// // // LOG_ADD(LOG_UINT32, CPUCycle, &it2)
 
-// Measured Voltages
-LOG_ADD(LOG_FLOAT, M_V1, &MeasuredVoltages[0])
-LOG_ADD(LOG_FLOAT, M_V2, &MeasuredVoltages[1])
-LOG_ADD(LOG_FLOAT, M_V3, &MeasuredVoltages[2])
-LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages[3])
+// // Measured Voltages
+// LOG_ADD(LOG_FLOAT, M_V1, &MeasuredVoltages[0])
+// LOG_ADD(LOG_FLOAT, M_V2, &MeasuredVoltages[1])
+// LOG_ADD(LOG_FLOAT, M_V3, &MeasuredVoltages[2])
+// LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages[3])
 
-// Predicted Voltages
-LOG_ADD(LOG_FLOAT, P_V1, &PredictedVoltages[0])
-LOG_ADD(LOG_FLOAT, P_V2, &PredictedVoltages[1])
-LOG_ADD(LOG_FLOAT, P_V3, &PredictedVoltages[2])
-LOG_ADD(LOG_FLOAT, P_V4, &PredictedVoltages[3])
+// // Predicted Voltages
+// LOG_ADD(LOG_FLOAT, P_V1, &PredictedVoltages[0])
+// LOG_ADD(LOG_FLOAT, P_V2, &PredictedVoltages[1])
+// LOG_ADD(LOG_FLOAT, P_V3, &PredictedVoltages[2])
+// LOG_ADD(LOG_FLOAT, P_V4, &PredictedVoltages[3])
 
-LOG_GROUP_STOP(Dipole_Model)
+// LOG_GROUP_STOP(Dipole_Model)
 
 PARAM_GROUP_START(Dipole_Params)
 PARAM_ADD(PARAM_FLOAT, calibTic, &currentCalibrationTick)

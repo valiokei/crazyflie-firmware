@@ -4,10 +4,39 @@
 #include "stm32f4xx_adc.h"
 #include "stm32f4xx_dma.h"
 #include "arm_math.h"
+#include "deck_analog.h"
+#include "stm32f4xx.h"
+#include "stm32f4xx_gpio.h"
+
+// -------------------------- ADC -------------------------------------------
+// ADC DMA configuration
+#define ARRAY_SIZE 2048
+
+// 2^12 WHERE 12 IS THE NUMBER OF BITS OF THE MCU ADC = 4096
+#define ADC_LEVELS 4096
+#define ADC_MAX_VOLTAGE 3.0f
+#define PCLK2 84e6f
+#define ADC_PRESCALER 6.0f
+// 12 from bit and 15 from the register value 12+15 = 27
+#define ADC_Full_Sampling_Time 27.0f
+#define Fc_ADC (PCLK2 / ADC_PRESCALER / ADC_Full_Sampling_Time)
+
+#define ADC_Channel_Default ADC_Channel_3;
+// -------------------------- DMA -------------------------------------------
+#define DMA_IRQ DMA2_Stream4_IRQn
+#define MY_DMA_Channel DMA_Channel_0
+#define MY_DMA_Stream DMA2_Stream4
+
+// IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
+
+// -------------------------- FFT -------------------------------------------
+#define FFT_SIZE ARRAY_SIZE
+#define BIN_SIZE (int)(Fc_ADC / FFT_SIZE)
 
 // ------------------------ Measurement Model Params -------------------------------------------
 #define Default_MagneticStandardDeviation 0.0001f
-#define G_INA 1000.0f
+#define G_INA 700.0f
+
 // -------------------------  adaptive std on Measured Voltage -------------------------------
 #define UseAdaptiveSTD 0
 #define window_size 25
@@ -35,7 +64,7 @@
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
 #define Giallo_Position_x +1.60f / 2.0f
-#define Giallo_Position_y +1.01f / 2.0f
+#define Giallo_Position_y +0.98f / 2.0f
 #define Giallo_Position_z +0.78f
 #define Giallo_Id 1
 
@@ -90,31 +119,6 @@
 #define DAC_WRITE_LENGTH 2
 #define DAC_ANALOG_HW_DELAY_AFTER_SET 10
 #define V_DD 3.3f
-
-// -------------------------- ADC -------------------------------------------
-// ADC DMA configuration
-#define ARRAY_SIZE 2048
-
-// 2^12 WHERE 12 IS THE NUMBER OF BITS OF THE MCU ADC = 4096
-#define ADC_LEVELS 4096
-#define ADC_MAX_VOLTAGE 3.0f
-#define PCLK2 84e6f
-#define ADC_PRESCALER 6.0f
-// 12 from bit and 15 from the register value 12+15 = 27
-#define ADC_Full_Sampling_Time 27.0f
-#define Fc_ADC (PCLK2 / ADC_PRESCALER / ADC_Full_Sampling_Time)
-
-#define ADC_Channel_Default ADC_Channel_3;
-// -------------------------- DMA -------------------------------------------
-#define DMA_IRQ DMA2_Stream4_IRQn
-#define MY_DMA_Channel DMA_Channel_0
-#define MY_DMA_Stream DMA2_Stream4
-
-// IRQn_Type DMA_IRQ = DMA2_Stream4_IRQn;
-
-// -------------------------- FFT -------------------------------------------
-#define FFT_SIZE ARRAY_SIZE
-#define BIN_SIZE (int)(Fc_ADC / FFT_SIZE)
 
 // ========================== Function Definitions ==========================
 

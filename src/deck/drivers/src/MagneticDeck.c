@@ -28,43 +28,44 @@ static bool isInit = false;
 // adc INITIALIZATION
 // ADC flag to check if the conversion is done
 uint8_t ADC_Done = 0;
-ADC_TypeDef *ADC_n = ADC1;
-uint8_t ADC_Channel = ADC_Channel_Default;
+static ADC_TypeDef *ADC_n = ADC1;
+static uint8_t ADC_Channel = ADC_Channel_Default;
 
 // DMA Initialization
-uint32_t DMA_Buffer[ARRAY_SIZE];
-DMA_Stream_TypeDef *DMA_Stream = MY_DMA_Stream;
-uint32_t DMA_Channel = MY_DMA_Channel;
+static uint32_t DMA_Buffer[ARRAY_SIZE];
+static DMA_Stream_TypeDef *DMA_Stream = MY_DMA_Stream;
+static uint32_t DMA_Channel = MY_DMA_Channel;
 
 // FFT parameters
-float32_t fft_input[FFT_SIZE];
-float32_t fft_output[FFT_SIZE];
-float32_t fft_magnitude[FFT_SIZE / 2];
-arm_rfft_fast_instance_f32 fft_instance;
-uint16_t fft_length = FFT_SIZE;
+static float32_t fft_input[FFT_SIZE];
+static float32_t fft_output[FFT_SIZE];
+static float32_t fft_magnitude[FFT_SIZE / 2];
+static arm_rfft_fast_instance_f32 fft_instance;
+static uint16_t fft_length = FFT_SIZE;
 
 // Potentiometer Params
 float32_t GainValue_Setted = 0;
 float GainValue = DefaultPotentiometerValue;
 // Total Gain
-float TotalGain = 0;
+static float TotalGain = 0;
 
-float32_t MagneticStandardDeviation = Default_MagneticStandardDeviation;
+float MagneticStandardDeviation = Default_MagneticStandardDeviation;
 
 // -------  Debug variables -------
-float32_t NeroAmpl = 0;
-float32_t GialloAmpl = 0;
-float32_t GrigioAmpl = 0;
-float32_t RossoAmpl = 0;
+static int counterSaturation = 0;
+
+static float32_t NeroAmpl = 0;
+static float32_t GialloAmpl = 0;
+static float32_t GrigioAmpl = 0;
+static float32_t RossoAmpl = 0;
 
 // FFT
-uint16_t bin_size = BIN_SIZE;
-float Fc = Fc_ADC;
-uint16_t fft_size = FFT_SIZE;
-uint16_t Nero_Idx = NeroIdx;
-uint16_t Giallo_Idx = GialloIdx;
-uint16_t Grigio_Idx = GrigioIdx;
-uint16_t Rosso_Idx = RossoIdx;
+static uint16_t bin_size = BIN_SIZE;
+static uint16_t fft_size = FFT_SIZE;
+// static uint16_t Nero_Idx = NeroIdx;
+// static uint16_t Giallo_Idx = GialloIdx;
+// static uint16_t Grigio_Idx = GrigioIdx;
+// static uint16_t Rosso_Idx = RossoIdx;
 
 float skipThisMeasurement = 0;
 
@@ -780,6 +781,11 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
         Output_buffer_pointer[p] = Output_buffer_pointer[p] * (ADC_MAX_VOLTAGE / ADC_LEVELS);
     }
 
+    // fin the maximum of the Output_buffer_pointer
+    float maxSat;
+    float maxIndexSat;
+    arm_max_f32(Output_buffer_pointer, FFT_SIZE, &maxSat, &maxIndexSat);
+
     // apply flattop window
     arm_mult_f32(Output_buffer_pointer, (float32_t *)flattop_2048_lut, Output_buffer_pointer, FFT_SIZE);
 
@@ -817,129 +823,166 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &RossoAmpl, &maxindex);
     RossoAmpl = RossoAmpl * flattopCorrectionFactor * 2.0f;
 
-    // TO HANDLE THE DYNAMIC CHANGE!!!!
+    // --------------------------------- 2D MEASUREMENT MODEL - DISTANCE COMPUTATION ---------------------------------
+    /*
+
+    // THIS MODEL IS NOT USED TO UPDATE THE KALMAN FILTER, JUST AS CONFIRMATION
+
+    // compute the the distances from the amplitude of each anchor
+    Nero_distance = powf(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
+    Giallo_distance = powf(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
+    Grigio_distance = powf(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
+    Rosso_distance = powf(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
+
+    // Nero
+    distanceMeasurement_t dist_Nero;
+    dist_Nero.distance = Nero_distance;
+    dist_Nero.x = Nero_Position[0];
+    dist_Nero.y = Nero_Position[1];
+    dist_Nero.z = Nero_Position[2];
+    dist_Nero.anchorId = Nero_Id;
+    dist_Nero.stdDev = MagneticStandardDeviation;
+    // DEBUG_PRINT("Nero Distance: %f\n", Nero_distance);
+    // estimatorEnqueueDistance(&dist_Nero);
+
+    // // Giallo
+    distanceMeasurement_t dist_Giallo;
+    dist_Giallo.distance = Giallo_distance;
+    dist_Giallo.x = Giallo_Position[0];
+    dist_Giallo.y = Giallo_Position[1];
+    dist_Giallo.z = Giallo_Position[2];
+    dist_Giallo.anchorId = Giallo_Id;
+    dist_Giallo.stdDev = MagneticStandardDeviation;
+    // estimatorEnqueueDistance(&dist_Giallo);
+
+    // // Grigio
+    distanceMeasurement_t dist_Grigio;
+    dist_Grigio.distance = Grigio_distance;
+    dist_Grigio.x = Grigio_Position[0];
+    dist_Grigio.y = Grigio_Position[1];
+    dist_Grigio.z = Grigio_Position[2];
+    dist_Grigio.anchorId = Grigio_Id;
+    dist_Grigio.stdDev = MagneticStandardDeviation;
+    // estimatorEnqueueDistance(&dist_Grigio);
+
+    // // Rosso
+    distanceMeasurement_t dist_Rosso;
+    dist_Rosso.distance = Rosso_distance;
+    dist_Rosso.x = Rosso_Position[0];
+    dist_Rosso.y = Rosso_Position[1];
+    dist_Rosso.z = Rosso_Position[2];
+    dist_Rosso.anchorId = Rosso_Id;
+    dist_Rosso.stdDev = MagneticStandardDeviation;
+    estimatorEnqueueDistance(&dist_Rosso);
+    */
+
+    // ---------------3D MEASUREMENT MODEL - POSITION COMPUTATION------------------------------
+    // THIS MODEL IS USED TO UPDATE THE KALMAN FILTER
+
+    voltMeasurement_t volt;
+
+    volt.x[0] = Nero_Position_x;
+    volt.y[0] = Nero_Position_y;
+    volt.z[0] = Nero_Position_z;
+    volt.stdDev[0] = MagneticStandardDeviation;
+    volt.measuredVolt[0] = NeroAmpl;
+    volt.anchorId[0] = Nero_Id;
+    volt.resonanceFrequency[0] = NeroResFreq;
+    volt.GainValue = TotalGain;
+
+    volt.x[1] = Giallo_Position_x;
+    volt.y[1] = Giallo_Position_y;
+    volt.z[1] = Giallo_Position_z;
+    volt.stdDev[1] = MagneticStandardDeviation;
+    volt.measuredVolt[1] = GialloAmpl;
+    volt.anchorId[1] = Giallo_Id;
+    volt.resonanceFrequency[1] = GialloResFreq;
+    volt.GainValue = TotalGain;
+
+    volt.x[2] = Grigio_Position_x;
+    volt.y[2] = Grigio_Position_y;
+    volt.z[2] = Grigio_Position_z;
+    volt.stdDev[2] = MagneticStandardDeviation;
+    volt.measuredVolt[2] = GrigioAmpl;
+    volt.anchorId[2] = Grigio_Id;
+    volt.resonanceFrequency[2] = GrigioResFreq;
+    volt.GainValue = TotalGain;
+
+    volt.x[3] = Rosso_Position_x;
+    volt.y[3] = Rosso_Position_y;
+    volt.z[3] = Rosso_Position_z;
+    volt.stdDev[3] = MagneticStandardDeviation;
+    volt.measuredVolt[3] = RossoAmpl;
+    volt.anchorId[3] = Rosso_Id;
+    volt.resonanceFrequency[3] = RossoResFreq;
+    volt.GainValue = TotalGain;
+
     // check if the ADC is saturating
     // TODO: 2.4 Voltages max voltages before saturation, so if you see 2.4V in the output, then change the gain. Also viceversa, to be tested the mimumum value
 
     // ---------------------- SATURATION CASE -------------------------------------
 
-    if (NeroAmpl > 2.4f)
+    // check if the max is saturating
+    if (maxSat >= 2.4f)
     {
-        DEBUG_PRINT("NeroAmpl is saturating\n");
+        // if the max is saturating, then skip this measurement
+        if (maxSat >= 2.4f)
+        {
+            // if the max is saturating, then skip this measurement
+            if (counterSaturation % 10 == 0)
+            {
+                DEBUG_PRINT("Saturating\n");
+            }
+            counterSaturation++;
+            return;
+        }
+        // finde the ancor more close to the max by looking at the max fft value
+        // Find the maximum value among NeroAmpl, GialloAmpl, GrigioAmpl, RossoAmpl
+
+        float maxAmpl = NeroAmpl;
+        uint8_t maxAnchorId = Nero_Id;
+        if (GialloAmpl > maxAmpl)
+        {
+            maxAmpl = GialloAmpl;
+            maxAnchorId = Giallo_Id;
+        }
+        if (GrigioAmpl > maxAmpl)
+        {
+            maxAmpl = GrigioAmpl;
+            maxAnchorId = Grigio_Id;
+        }
+        if (RossoAmpl > maxAmpl)
+        {
+            maxAmpl = RossoAmpl;
+            maxAnchorId = Rosso_Id;
+        }
+
+        char *anchorName;
+        switch (maxAnchorId)
+        {
+        case Nero_Id:
+            anchorName = "Nero";
+            break;
+        case Giallo_Id:
+            anchorName = "Giallo";
+            break;
+        case Grigio_Id:
+            anchorName = "Grigio";
+            break;
+        case Rosso_Id:
+            anchorName = "Rosso";
+            break;
+        default:
+            anchorName = "Unknown";
+            break;
+        }
+        // DEBUG_PRINT("Max Anchor Name: %s\n", anchorName);
+        // Incresing the std for that measurement
+        volt.stdDev[maxAnchorId] = MagneticStandardDeviation * 2;
+        // DEBUG_PRINT("STD increased for %s *2\n", anchorName);
     }
-    if (GialloAmpl > 2.4f)
-    {
-        DEBUG_PRINT("GialloAmpl is saturating\n");
-    }
-    if (GrigioAmpl > 2.4f)
-    {
-        DEBUG_PRINT("GrigioAmpl is saturating\n");
-    }
-    if (RossoAmpl > 2.4f)
-    {
-        DEBUG_PRINT("RossoAmpl is saturating\n");
-    }
-    else
-    {
 
-        // ---------------------- NOT SATURATING CASE -------------------------------------
-
-        // --------------------------------- 2D MEASUREMENT MODEL - DISTANCE COMPUTATION ---------------------------------
-        /*
-
-        // THIS MODEL IS NOT USED TO UPDATE THE KALMAN FILTER, JUST AS CONFIRMATION
-
-        // compute the the distances from the amplitude of each anchor
-        Nero_distance = powf(10, (log10(NeroAmpl) - Nero_Q) / Nero_M);
-        Giallo_distance = powf(10, (log10(GialloAmpl) - Giallo_Q) / Giallo_M);
-        Grigio_distance = powf(10, (log10(GrigioAmpl) - Grigio_Q) / Grigio_M);
-        Rosso_distance = powf(10, (log10(RossoAmpl) - Rosso_Q) / Rosso_M);
-
-        // Nero
-        distanceMeasurement_t dist_Nero;
-        dist_Nero.distance = Nero_distance;
-        dist_Nero.x = Nero_Position[0];
-        dist_Nero.y = Nero_Position[1];
-        dist_Nero.z = Nero_Position[2];
-        dist_Nero.anchorId = Nero_Id;
-        dist_Nero.stdDev = MagneticStandardDeviation;
-        // DEBUG_PRINT("Nero Distance: %f\n", Nero_distance);
-        // estimatorEnqueueDistance(&dist_Nero);
-
-        // // Giallo
-        distanceMeasurement_t dist_Giallo;
-        dist_Giallo.distance = Giallo_distance;
-        dist_Giallo.x = Giallo_Position[0];
-        dist_Giallo.y = Giallo_Position[1];
-        dist_Giallo.z = Giallo_Position[2];
-        dist_Giallo.anchorId = Giallo_Id;
-        dist_Giallo.stdDev = MagneticStandardDeviation;
-        // estimatorEnqueueDistance(&dist_Giallo);
-
-        // // Grigio
-        distanceMeasurement_t dist_Grigio;
-        dist_Grigio.distance = Grigio_distance;
-        dist_Grigio.x = Grigio_Position[0];
-        dist_Grigio.y = Grigio_Position[1];
-        dist_Grigio.z = Grigio_Position[2];
-        dist_Grigio.anchorId = Grigio_Id;
-        dist_Grigio.stdDev = MagneticStandardDeviation;
-        // estimatorEnqueueDistance(&dist_Grigio);
-
-        // // Rosso
-        distanceMeasurement_t dist_Rosso;
-        dist_Rosso.distance = Rosso_distance;
-        dist_Rosso.x = Rosso_Position[0];
-        dist_Rosso.y = Rosso_Position[1];
-        dist_Rosso.z = Rosso_Position[2];
-        dist_Rosso.anchorId = Rosso_Id;
-        dist_Rosso.stdDev = MagneticStandardDeviation;
-        estimatorEnqueueDistance(&dist_Rosso);
-        */
-
-        // ---------------3D MEASUREMENT MODEL - POSITION COMPUTATION------------------------------
-        // THIS MODEL IS USED TO UPDATE THE KALMAN FILTER
-
-        voltMeasurement_t volt;
-
-        volt.x[0] = Nero_Position_x;
-        volt.y[0] = Nero_Position_y;
-        volt.z[0] = Nero_Position_z;
-        volt.stdDev[0] = MagneticStandardDeviation;
-        volt.measuredVolt[0] = NeroAmpl;
-        volt.anchorId[0] = Nero_Id;
-        volt.resonanceFrequency[0] = NeroResFreq;
-        volt.GainValue = TotalGain;
-
-        volt.x[1] = Giallo_Position_x;
-        volt.y[1] = Giallo_Position_y;
-        volt.z[1] = Giallo_Position_z;
-        volt.stdDev[1] = MagneticStandardDeviation;
-        volt.measuredVolt[1] = GialloAmpl;
-        volt.anchorId[1] = Giallo_Id;
-        volt.resonanceFrequency[1] = GialloResFreq;
-        volt.GainValue = TotalGain;
-
-        volt.x[2] = Grigio_Position_x;
-        volt.y[2] = Grigio_Position_y;
-        volt.z[2] = Grigio_Position_z;
-        volt.stdDev[2] = MagneticStandardDeviation;
-        volt.measuredVolt[2] = GrigioAmpl;
-        volt.anchorId[2] = Grigio_Id;
-        volt.resonanceFrequency[2] = GrigioResFreq;
-        volt.GainValue = TotalGain;
-
-        volt.x[3] = Rosso_Position_x;
-        volt.y[3] = Rosso_Position_y;
-        volt.z[3] = Rosso_Position_z;
-        volt.stdDev[3] = MagneticStandardDeviation;
-        volt.measuredVolt[3] = RossoAmpl;
-        volt.anchorId[3] = Rosso_Id;
-        volt.resonanceFrequency[3] = RossoResFreq;
-        volt.GainValue = TotalGain;
-
-        estimatorEnqueueVolt(&volt);
-    }
+    estimatorEnqueueVolt(&volt);
 }
 
 static void mytask(void *param)
@@ -996,7 +1039,7 @@ static void mytask(void *param)
         sum += flattop_2048_lut[i];
     }
     float32_t flattopCorrectionFactor = ARRAY_SIZE / sum;
-    DEBUG_PRINT("Flattop Correction Factor: %f\n", flattopCorrectionFactor);
+    DEBUG_PRINT("Flattop Correction Factor: %f\n", (double)flattopCorrectionFactor);
 
     while (1)
     {
