@@ -54,8 +54,8 @@
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-#define Nero_Position_x -1.60f / 2.0f
-#define Nero_Position_y -0.98f / 2.0f
+#define Nero_Position_x -0.72f
+#define Nero_Position_y -0.76f
 #define Nero_Position_z +0.78f
 #define Nero_Id 0
 
@@ -63,8 +63,8 @@
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-#define Giallo_Position_x +1.60f / 2.0f
-#define Giallo_Position_y +0.98f / 2.0f
+#define Giallo_Position_x +0.64f
+#define Giallo_Position_y +0.5f
 #define Giallo_Position_z +0.78f
 #define Giallo_Id 1
 
@@ -72,8 +72,8 @@
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-#define Grigio_Position_x -1.60f / 2.0f
-#define Grigio_Position_y +0.98f / 2.0f
+#define Grigio_Position_x -0.64f
+#define Grigio_Position_y +0.5f
 #define Grigio_Position_z +0.78f
 #define Grigio_Id 2
 
@@ -81,8 +81,8 @@
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-#define Rosso_Position_x +1.60f / 2.0f
-#define Rosso_Position_y -1.01f / 2.0f
+#define Rosso_Position_x +0.64f
+#define Rosso_Position_y -0.5f
 #define Rosso_Position_z +0.78f
 #define Rosso_Id 3
 

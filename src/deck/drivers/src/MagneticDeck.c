@@ -881,6 +881,8 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
 
     voltMeasurement_t volt;
 
+    volt.Id_in_saturation = 10;
+
     volt.x[0] = Nero_Position_x;
     volt.y[0] = Nero_Position_y;
     volt.z[0] = Nero_Position_z;
@@ -923,24 +925,22 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     // ---------------------- SATURATION CASE -------------------------------------
 
     // check if the max is saturating
-    if (maxSat >= 2.4f)
+    if (maxSat >= 2.5f)
     {
         // if the max is saturating, then skip this measurement
-        if (maxSat >= 2.4f)
+
+        // if the max is saturating, then skip this measurement
+        if (counterSaturation % 10 == 0)
         {
-            // if the max is saturating, then skip this measurement
-            if (counterSaturation % 10 == 0)
-            {
-                DEBUG_PRINT("Saturating\n");
-            }
-            counterSaturation++;
-            return;
+            DEBUG_PRINT("Saturating\n");
         }
+        counterSaturation++;
+
         // finde the ancor more close to the max by looking at the max fft value
         // Find the maximum value among NeroAmpl, GialloAmpl, GrigioAmpl, RossoAmpl
 
         float maxAmpl = NeroAmpl;
-        uint8_t maxAnchorId = Nero_Id;
+        int maxAnchorId = Nero_Id;
         if (GialloAmpl > maxAmpl)
         {
             maxAmpl = GialloAmpl;
@@ -978,7 +978,12 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
         }
         // DEBUG_PRINT("Max Anchor Name: %s\n", anchorName);
         // Incresing the std for that measurement
-        volt.stdDev[maxAnchorId] = MagneticStandardDeviation * 2;
+
+        // volt.stdDev[maxAnchorId] = MagneticStandardDeviation * 2;
+
+        volt.Id_in_saturation = maxAnchorId;
+        // return;
+
         // DEBUG_PRINT("STD increased for %s *2\n", anchorName);
     }
 

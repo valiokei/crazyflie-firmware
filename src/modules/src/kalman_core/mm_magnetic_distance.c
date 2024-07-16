@@ -45,10 +45,19 @@ float V_rx_derivative_x[4];
 float V_rx_derivative_y[4];
 float V_rx_derivative_z[4];
 
+float multiplyFactor = 1.0f;
+
 // ------------------------------ DEBUG ------------------------------
 static float PredictedVoltages[4];
 static float MeasuredVoltages[4];
 static int printFlagSTD_Type = 0;
+
+volatile float d1 = 0.0f;
+volatile float d2 = 0.0f;
+volatile float d3 = 0.0f;
+volatile float d4 = 0.0f;
+
+static float ERRORS[4] = {};
 
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
@@ -85,7 +94,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             // point_t cfPosP;
             // estimatorKalmanGetEstimatedPos(&cfPosP);
             // float tag_pos_predicted_calibrated[3] = {cfPosP.x, cfPosP.y, cfPosP.z};
-            float tag_pos_predicted_calibrated[3] = {0.0, 0.0, 0.0};
+            float tag_pos_predicted_calibrated[3] = {0.0, 0.0, 0.60};
 
             // float RotationMatrix[3][3];
             // estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
@@ -134,6 +143,8 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 DEBUG_PRINT("Resetting the Kalman filte after calibrationr\n");
                 paramSetInt(paramGetVarId("kalman", "resetEstimation"), 1);
                 currentCalibrationTick = currentCalibrationTick + 1;
+                paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
+
                 // paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
             }
 
@@ -271,10 +282,17 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             h_4[KC_STATE_Y] = V_rx_derivative_y[3];
             h_4[KC_STATE_Z] = V_rx_derivative_z[3];
 
+            arm_matrix_instance_f32 *H_ptrs[4] = {&H_1, &H_2, &H_3, &H_4};
+
             float error_anchor1 = (voltAnchor->measuredVolt[0] / CG_a1) - V_rx_1; // / 0.995941558f;
             float error_anchor2 = (voltAnchor->measuredVolt[1] / CG_a2) - V_rx_2;
             float error_anchor3 = (voltAnchor->measuredVolt[2] / CG_a3) - V_rx_3;
             float error_anchor4 = (voltAnchor->measuredVolt[3] / CG_a4) - V_rx_4;
+
+            ERRORS[0] = error_anchor1;
+            ERRORS[1] = error_anchor2;
+            ERRORS[2] = error_anchor3;
+            ERRORS[3] = error_anchor4;
 
             // ------------------- Logging -------------------
             // Predicted Voltages
@@ -288,6 +306,8 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             MeasuredVoltages[1] = (voltAnchor->measuredVolt[1] / CG_a2);
             MeasuredVoltages[2] = (voltAnchor->measuredVolt[2] / CG_a3);
             MeasuredVoltages[3] = (voltAnchor->measuredVolt[3] / CG_a4);
+
+            // DA PROVARE ancora fake
 
             if (UseAdaptiveSTD == 1)
             {
@@ -308,32 +328,82 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 //     printFlagSTD_Type = 1;
                 // }
 
-                // kalmanCoreScalarUpdate(this, &H_1, error_anchor1, voltAnchor->stdDev[0]);
-                // kalmanCoreScalarUpdate(this, &H_2, error_anchor2, voltAnchor->stdDev[1]);
-                // kalmanCoreScalarUpdate(this, &H_3, error_anchor3, voltAnchor->stdDev[2]);
-                // kalmanCoreScalarUpdate(this, &H_4, error_anchor4, voltAnchor->stdDev[3]);
+                // ---------------------------------------- HANDLER FOR SATURATION ----------------------------------------
+
+                // int idSaturation = voltAnchor->Id_in_saturation;
+                // float std_saturation = 0.10; // 10 cm
+
+                // for (int anchor_idx = 0; anchor_idx < 4; anchor_idx++)
+                // {
+                //     if (anchor_idx == idSaturation && idSaturation != 10)
+                //     {
+
+                //         // This anchor is saturating, using proximity positioning to update the kalman filter
+                //         // I'm using the position of the anchor as the position of the drone to compute the error
+                //         // since i'm sure is next to the anchor location
+
+                //         // x
+                //         float h_x[KC_STATE_DIM] = {0};
+                //         arm_matrix_instance_f32 H_x = {1, KC_STATE_DIM, h_x};
+                //         h_x[KC_STATE_X] = 1;
+                //         kalmanCoreScalarUpdate(this, &H_x, voltAnchor->x[idSaturation] - this->S[KC_STATE_X], std_saturation);
+
+                //         // y
+                //         float h_y[KC_STATE_DIM] = {0};
+                //         arm_matrix_instance_f32 H_y = {1, KC_STATE_DIM, h_y};
+                //         h_y[KC_STATE_Y] = 1;
+                //         kalmanCoreScalarUpdate(this, &H_y, voltAnchor->y[idSaturation] - this->S[KC_STATE_Y], std_saturation);
+
+                //         // z
+                //         float h_z[KC_STATE_DIM] = {0};
+                //         arm_matrix_instance_f32 H_z = {1, KC_STATE_DIM, h_z};
+                //         h_z[KC_STATE_Z] = 1;
+                //         kalmanCoreScalarUpdate(this, &H_z, voltAnchor->z[idSaturation] - this->S[KC_STATE_Z], std_saturation);
+                //     }
+
+                //     // normal kalman update since there is no saturation
+                //     else
+                //     {
+                //         kalmanCoreScalarUpdate(this, H_ptrs[anchor_idx], ERRORS[anchor_idx], voltAnchor->stdDev[anchor_idx]);
+                //     }
+                // }
+
+                // ------------------- WITHOUT HANDLER FOR SATURATION -------------------
+
+                kalmanCoreScalarUpdate(this, &H_1, error_anchor1 * multiplyFactor, voltAnchor->stdDev[0] * multiplyFactor);
+                kalmanCoreScalarUpdate(this, &H_2, error_anchor2 * multiplyFactor, voltAnchor->stdDev[1] * multiplyFactor);
+                kalmanCoreScalarUpdate(this, &H_3, error_anchor3 * multiplyFactor, voltAnchor->stdDev[2] * multiplyFactor);
+                kalmanCoreScalarUpdate(this, &H_4, error_anchor4 * multiplyFactor, voltAnchor->stdDev[3] * multiplyFactor);
             }
         }
     }
 }
 
-// LOG_GROUP_START(Dipole_Model)
+LOG_GROUP_START(Dipole_Model)
+
 // // // LOG_ADD(LOG_UINT32, CPUCycle, &it2)
 
 // // Measured Voltages
-// LOG_ADD(LOG_FLOAT, M_V1, &MeasuredVoltages[0])
-// LOG_ADD(LOG_FLOAT, M_V2, &MeasuredVoltages[1])
-// LOG_ADD(LOG_FLOAT, M_V3, &MeasuredVoltages[2])
-// LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages[3])
+LOG_ADD(LOG_FLOAT, M_V1, &MeasuredVoltages[0])
+LOG_ADD(LOG_FLOAT, M_V2, &MeasuredVoltages[1])
+LOG_ADD(LOG_FLOAT, M_V3, &MeasuredVoltages[2])
+LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages[3])
 
 // // Predicted Voltages
-// LOG_ADD(LOG_FLOAT, P_V1, &PredictedVoltages[0])
-// LOG_ADD(LOG_FLOAT, P_V2, &PredictedVoltages[1])
-// LOG_ADD(LOG_FLOAT, P_V3, &PredictedVoltages[2])
-// LOG_ADD(LOG_FLOAT, P_V4, &PredictedVoltages[3])
+LOG_ADD(LOG_FLOAT, P_V1, &PredictedVoltages[0])
+LOG_ADD(LOG_FLOAT, P_V2, &PredictedVoltages[1])
+LOG_ADD(LOG_FLOAT, P_V3, &PredictedVoltages[2])
+LOG_ADD(LOG_FLOAT, P_V4, &PredictedVoltages[3])
 
-// LOG_GROUP_STOP(Dipole_Model)
+// Errors
+LOG_ADD(LOG_FLOAT, ERR1, &ERRORS[0])
+LOG_ADD(LOG_FLOAT, ERR2, &ERRORS[1])
+LOG_ADD(LOG_FLOAT, ERR3, &ERRORS[2])
+LOG_ADD(LOG_FLOAT, ERR4, &ERRORS[3])
+
+LOG_GROUP_STOP(Dipole_Model)
 
 PARAM_GROUP_START(Dipole_Params)
 PARAM_ADD(PARAM_FLOAT, calibTic, &currentCalibrationTick)
+PARAM_ADD(PARAM_FLOAT, Meas_factor, &multiplyFactor)
 PARAM_GROUP_STOP(Dipole_Params)

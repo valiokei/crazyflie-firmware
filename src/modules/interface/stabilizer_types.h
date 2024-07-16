@@ -189,6 +189,7 @@ typedef struct voltMeasurement_s
   float resonanceFrequency[4];
   float stdDev[4];
   float GainValue;
+  int Id_in_saturation;
 } voltMeasurement_t;
 
 // typedef struct voltMeasurement_s
