@@ -1,111 +1,158 @@
+#ifndef __NELDER_MEAD_H__
+#define __NELDER_MEAD_H__
 
-#include "stabilizer_types.h"
-
-#define DIMENSIONS 3
-
-// #include "model.h"
-
-typedef float real;
+#include "MagneticDeck.h"
 
 /*
- * "Low-noise" squaring for arguments with no side-effects
- */
-#define SQR(x) ((x) * (x))
+   Multivariable optimization without derivatives/gradients.
+   Implementation of Nelder-Mead simplex algorithm.
+   http://www.scholarpedia.org/article/Nelder-Mead_algorithm
 
-/*
- * Function definition
- */
-typedef struct Model model;
+Do this:
 
-/*
- * Point definition
- *   x: n-dimensional array with point coordinates
- *   y: value of a function f applied to the coordinates x, y = f(x)
+#define NELDER_MEAD_IMPLEMENTATION
+
+before you include this file in *one* C or C++ file to create the implementation.
+You can disable the debug_log feature to remove some extra checks and includes.
+
+#define NM_NO_DEBUG_LOG
+
+This version is written by Justin Meiners (2021), derived from Matteo Maggioni's (2017) work.
+The full MIT License is listed at the end of the file.
  */
-typedef struct Point
+
+// Types
+//-----------------------------------------------------------------------------
+// You can override these with #define if you really want to.
+#define NM_RHO 1.0f
+
+#define NM_CHI 2.0f
+
+#define NM_GAMMA 0.5f
+
+#define NM_SIGMA 0.5f
+#define NM_REAL float
+#define TEMP_POINT_COUNT_ 4
+#define DIMENSION 3
+typedef struct
 {
-    real x[DIMENSIONS];
-    real y;
-} point;
+    float Anchors[NUM_ANCHORS][3];
+    float versore_orientamento_cf[3];
+    float frequencies[NUM_ANCHORS];
+    float MeasuredVoltages_calibrated[NUM_ANCHORS];
+    float Gain;
+} myParams_t;
 
-/*
- * Initialize function
- */
-void init_model(float *tag_pos_predicted, float *tag_or_versor, voltMeasurement_t *voltAnchor, model *mdl);
+// Cost function.
 
-/*
- * Return expected number of dimensions
- */
-int dimensions(void);
+// Parameters:
+// - number of variables
+// - point (array of n values)
+// - args is user  data
+typedef NM_REAL (*nm_multivar_real_func_t)(int, const NM_REAL *, void *);
 
-/*
- * Cost function implementation
- *   model: model to optimize
- *   point: point where to evaluate the function
- */
-void cost(const model *, point *);
+// Parmeters:
+// - tol_x: Terminate if any dimension of the simplex is smaller.
+// - tol_fx: Terminate if we see improvement less than this amount.
+// - max_iterations: Terminate if we exceed this number of iterations.
+// - restarts: How many time to try improving after a termination.
+// - debug_log: whether to show debug text.
 
-/*
- * Optimizer settings
- */
-typedef struct Optimset
+typedef struct
 {
-    int precision;         // significant figures in floats/exponentials
-    int format;            // fixed or exponential floating point format
-    int verbose;           // toggle verbose output during minimization
-    real tol_x;            // tolerance on the simplex solutions coordinates
-    real tol_y;            // tolerance on the function value
-    unsigned int max_iter; // maximum number of allowed iterations
-    unsigned int max_eval; // maximum number of allowed function evaluations
-    int adaptive;          // simplex updates reduced for dimension > 2
-    real scale;            // scaling factor of initial simplex
-} optimset;
+    NM_REAL tol_x;
+    NM_REAL tol_fx;
+    int max_iterations;
+    int restarts;
+    int debug_log;
+} nm_params_t;
 
-/*
- * The "simplex" containing an array of n + 1 points each of dimension n
- */
-typedef struct Simplex
+typedef struct
 {
-    int n;
-    unsigned int num_iter, num_eval;
-    point vertices[DIMENSIONS + 1];
-    point reflected;
-    point expanded;
-    point contracted;
-    point centroid;
-} simplex;
+    int tol_satisfied;
+    int iterations;
+    NM_REAL min_fx;
+} nm_result_t;
+
+// CONVENIENCE API
+//-----------------------------------------------------------------------------
+
+// These functions try to find the minimum using a variety of tricks and techniques on top of a simplex.
+// They are supposed to be as much of a "black box" as possible.
+
+// Parameters:
+// - dimension: number of variables
+// - initial: point to start search around (array of n values)
+// - func: is a pointer to a cost function to optimize
+// - args: optional user arguments passed to the function.
+// - params: tolerance and iteration control.
+// - out: the point which minimizes function (array of n values)
+//
+nm_result_t nm_multivar_optimize(
+    int dimension,
+    const NM_REAL *initial,
+    const NM_REAL *initial_search_size,
+    nm_multivar_real_func_t func,
+    void *args,
+    const nm_params_t *params,
+    NM_REAL *out);
+
+//-----------------------------------------------------------------------------
+// DETAILED API
+//-----------------------------------------------------------------------------
+
+// If you want to write your own seach/restart strategy using simplex iteration
+// this detailed API can help.
+
+// An n-dimensional point x with it's function value fx.
+typedef struct
+{
+    NM_REAL *x;
+    NM_REAL fx;
+} nm_simplex_pt_t;
+
+// An n-dimensional simplex with n+1 simplex points.
+typedef struct
+{
+    int dimension;
+    nm_simplex_pt_t *p;
+    NM_REAL *p_buffer;
+    NM_REAL *temp_buffer;
+} nm_simplex_t;
+
+void nm_simplex_init(nm_simplex_t *simplex, int dimension);
+void nm_simplex_shutdown(nm_simplex_t *simplex);
+
+// Guess the simplex size in each dimension using only the initial value.
+void nm_guess_simplex_size(int n, const NM_REAL *initial, NM_REAL *out_size);
+
+// Place the simplex in a standard position around the initial point.
+// This is roughly offseting the intiial point by each vector in the standard basis.
+/*
+   |\
+   | \
+   |  \
+   0---
+ */
+
+void nm_simplex_position_around(nm_simplex_t *simplex, const NM_REAL *initial, const NM_REAL *size);
+
+int nm_simplex_iterate(
+    nm_simplex_t *simplex,
+    nm_multivar_real_func_t func,
+    void *args,
+    const nm_params_t *params);
+
+void nm_params_init_default(nm_params_t *params, int dimension);
 
 /*
- * "Simplex" or "Amoeba" optimizer
+   Copyright 2017 Matteo Maggioni, 2022 Justin Meiners
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-void nelder_mead(const model *, const optimset *, simplex *, point *);
 
-/*
- * Utility functions
- */
-real distance(int, const point *, const point *);
-
-int compare(const void *, const void *);
-
-void sort(simplex *);
-
-void init_simplex(int, real, const point *, simplex *smpl);
-
-void update_centroid(simplex *);
-
-void update_simplex(real, const point *, const point *, const point *,
-                    const model *, simplex *, point *);
-
-real tolerance_x(const simplex *);
-
-real tolerance_y(const simplex *);
-
-int terminated(const simplex *, const optimset *);
-
-// point *init_point(int);
-
-void copy_point(int, const point *, point *);
-
-void free_simplex(simplex *);
-
-void free_point(point *);
+#endif // __NELDER_MEAD_H__

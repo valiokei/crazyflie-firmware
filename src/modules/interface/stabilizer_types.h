@@ -184,10 +184,12 @@ typedef struct voltMeasurement_s
   float x[4];
   float y[4];
   float z[4];
-  uint8_t anchorId[4];
+  int anchorId[4];
   float measuredVolt[4];
   float resonanceFrequency[4];
   float stdDev[4];
+  float GainValue;
+  int Id_in_saturation;
 } voltMeasurement_t;
 
 typedef struct zDistance_s

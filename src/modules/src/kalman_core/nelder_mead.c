@@ -1,273 +1,396 @@
-#include "math.h"
 #include "nelder_mead.h"
+// #include "MagneticDeck.h"
+#include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
+// #include "FreeRTOS.h"
 
-/*
- * Implementation of Nelder-Mead method for direct uncontrained optimization
- *   mdl:  model to optimize
- *   opt:  optimization settings
- *   smpl: simplex used for optimization (updated on exit)
- *   out:  minimizer found by the optimization (output argument)
- */
-void nelder_mead(const model *mdl, const optimset *opt, simplex *smpl, point *out)
+int verbose = 0;
+
+static nm_simplex_pt_t my_p[DIMENSION + 1];
+static NM_REAL my_p_buffer[(DIMENSION + 1) * DIMENSION];
+static NM_REAL my_temp_buffer[TEMP_POINT_COUNT_ * DIMENSION];
+
+void nm_params_init_default(nm_params_t *params, int dimension)
 {
-    // initialize Nelder-Mead parameters
-    const real alpha = 1.0f;
-    const real gamma = opt->adaptive ? 1.0f + 2.0f / (float)smpl->n : 2.0f;
-    const real rho = opt->adaptive ? 0.75f - 0.5f / (float)smpl->n : 0.5f;
-    const real sigma = opt->adaptive ? 1.0f - 1.0f / (float)smpl->n : 0.5f;
+    params->tol_x = 0;
+    params->tol_fx = 0.00001f;
+    params->max_iterations = 1000 + 1000 * (int)sqrtf((float)dimension);
 
-    // simplex contains n + 1 vertices, where n is the dimensionality of each point
-    for (int i = 0; i < smpl->n + 1; i++)
+    params->restarts = 3;
+    params->debug_log = 0;
+}
+
+void nm_simplex_init(nm_simplex_t *simplex, int dimension)
+{
+    int n = dimension;
+    // simplex->p = malloc((n + 1) * sizeof(nm_simplex_pt_t));
+    simplex->p = my_p;
+    simplex->dimension = n;
+
+    // Simplex has n + 1 points where n is the dimension pf the data.
+    // simplex->p_buffer = malloc((n + 1) * n * sizeof(NM_REAL));
+    simplex->p_buffer = my_p_buffer;
+
+    for (int i = 0; i < n + 1; i++)
     {
-        cost(mdl, smpl->vertices + i);
-        smpl->num_eval++;
+        simplex->p[i].x = simplex->p_buffer + i * n;
     }
-    sort(smpl);
 
-    // internal labels -
-    point *best = smpl->vertices;
-    point *worst = smpl->vertices + smpl->n;
+    // simplex->temp_buffer = malloc(TEMP_POINT_COUNT_ * n * sizeof(NM_REAL));
+    simplex->temp_buffer = my_temp_buffer;
+}
 
-    while (!terminated(smpl, opt))
+void nm_simplex_shutdown(nm_simplex_t *simplex)
+{
+    // free(simplex->p_buffer);
+    // free(simplex->p);
+    // free(simplex->temp_buffer);
+}
+
+void nm_guess_simplex_size(int n, const NM_REAL *initial, NM_REAL *out_size)
+{
+    for (int j = 0; j < n; ++j)
     {
-        smpl->num_iter++;
+        out_size[j] = (0.1f * fabsf(initial[j])) + 0.005f;
+    }
+}
+
+void nm_simplex_position_around(nm_simplex_t *simplex, const NM_REAL *initial, const NM_REAL *size)
+{
+    int n = simplex->dimension;
+    for (int i = 0; i < n + 1; ++i)
+    {
+        for (int j = 0; j < n; ++j)
+        {
+            simplex->p[i].x[j] = initial[j] + ((i - 1 == j) ? size[j] : 0.0f);
+        }
+    }
+}
+
+// Simplex sorting
+static int cmp_pt_value_(const void *arg1, const void *arg2)
+{
+    const nm_simplex_pt_t *p1 = arg1;
+    const nm_simplex_pt_t *p2 = arg2;
+
+    if (p1->fx < p2->fx)
+    {
+        return -1;
+    }
+    else if (p2->fx < p1->fx)
+    {
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+static void simplex_sort(nm_simplex_t *simplex)
+{
+    qsort(simplex->p, simplex->dimension + 1, sizeof(nm_simplex_pt_t), cmp_pt_value_);
+}
+
+// Get centroid (average position) of simplex
+static void simplex_centroid(const nm_simplex_t *simplex, nm_simplex_pt_t *centroid)
+{
+    int n = simplex->dimension;
+    NM_REAL scale = 1.0f / (NM_REAL)n;
+    // (last point is not included)
+    for (int j = 0; j < n; j++)
+    {
+        centroid->x[j] = 0;
+        for (int i = 0; i < n; i++)
+        {
+            centroid->x[j] += simplex->p[i].x[j];
+        }
+        centroid->x[j] *= scale;
+    }
+}
+
+static void update_images(nm_simplex_pt_t *start, nm_simplex_pt_t *end, int dimension, nm_multivar_real_func_t func, void *args)
+{
+    while (start != end)
+    {
+        start->fx = func(dimension, start->x, args);
+        ++start;
+    }
+}
+
+static void simplex_shrink(nm_simplex_t *simplex)
+{
+    int n = simplex->dimension;
+    for (int i = 1; i < n + 1; i++)
+    {
+        for (int j = 0; j < n; j++)
+        {
+            simplex->p[i].x[j] = simplex->p[0].x[j] + NM_SIGMA * (simplex->p[i].x[j] - simplex->p[0].x[j]);
+        }
+    }
+}
+
+// Assess if simplex satisfies the minimization requirements
+
+static int should_stop_(const nm_simplex_t *simplex, int iterations, const nm_params_t *params)
+{
+
+    if (iterations >= params->max_iterations && params->max_iterations > 0)
+        return 1;
+
+    int n = simplex->dimension;
+
+    if (params->tol_fx > 0.0f)
+    {
+        NM_REAL best = fabsf(simplex->p[0].fx);
+        NM_REAL worst = fabsf(simplex->p[n].fx);
+        NM_REAL fractional_difference = 2.0f * (worst - best) / (worst + best);
+
+        // printf("%f\n", fractional_difference);
+
+        if (fractional_difference < params->tol_fx)
+            return 1;
+    }
+
+    NM_REAL max_width = 0.0f;
+    if (params->tol_x > 0.0f)
+    {
+        for (int i = 1; i < n + 1; i++)
+        {
+            for (int j = 0; j < n; j++)
+            {
+                const NM_REAL width = fabsf(simplex->p[0].x[j] - simplex->p[i].x[j]);
+                if (width > max_width)
+                    max_width = width;
+            }
+        }
+        return max_width < params->tol_x;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+// Update current point
+static void update_point(const nm_simplex_t *simplex, const nm_simplex_pt_t *centroid,
+                         NM_REAL lambda, nm_simplex_pt_t *point)
+{
+    int n = simplex->dimension;
+    for (int j = 0; j < n; j++)
+    {
+        point->x[j] = (1.0f + lambda) * centroid->x[j] - lambda * simplex->p[n].x[j];
+    }
+}
+
+static void copy_point_(int n, const nm_simplex_pt_t *src, nm_simplex_pt_t *dst)
+{
+    for (int i = 0; i < n; ++i)
+    {
+        dst->x[i] = src->x[i];
+    }
+    dst->fx = src->fx;
+}
+
+static void swap_points_(nm_simplex_pt_t *p1, nm_simplex_pt_t *p2)
+{
+    nm_simplex_pt_t temp = *p1;
+    *p1 = *p2;
+    *p2 = temp;
+}
+
+// #undef TEMP_POINT_COUNT
+
+nm_result_t nm_multivar_optimize(
+    int dimension,
+    const NM_REAL *initial,
+    const NM_REAL *initial_search_size,
+    nm_multivar_real_func_t func,
+    void *args,
+    const nm_params_t *params,
+    NM_REAL *out)
+{
+    float tol_x = params->tol_x;
+    float tol_fx = params->tol_fx;
+    int max_iterations = params->max_iterations;
+    int restarts = params->restarts;
+
+    nm_simplex_t simplex;
+    nm_simplex_init(&simplex, dimension);
+
+    nm_simplex_position_around(&simplex, initial, initial_search_size);
+
+    nm_result_t r;
+    r.iterations = nm_simplex_iterate(&simplex, func, args, params);
+    r.tol_satisfied = r.iterations < params->max_iterations;
+
+    for (int restarts = 0; restarts <= params->restarts; ++restarts)
+    {
+        nm_simplex_position_around(&simplex, simplex.p[0].x, initial_search_size);
+        int iterations = nm_simplex_iterate(&simplex, func, args, params);
+        r.iterations += iterations;
+        if (!r.tol_satisfied)
+            r.tol_satisfied = r.iterations < params->max_iterations;
+    }
+
+    r.min_fx = simplex.p[0].fx;
+    // save solution in output argument
+    if (out)
+    {
+        for (int i = 0; i < dimension; ++i)
+        {
+            out[i] = simplex.p[0].x[i];
+        }
+    }
+    nm_simplex_shutdown(&simplex);
+    return r;
+}
+
+int nm_simplex_iterate(
+    nm_simplex_t *simplex,
+    nm_multivar_real_func_t func,
+    void *args,
+    const nm_params_t *params)
+{
+
+    int n = simplex->dimension;
+    // internal points
+    nm_simplex_pt_t point_r;
+    nm_simplex_pt_t point_e;
+    nm_simplex_pt_t point_c;
+    nm_simplex_pt_t centroid;
+
+    point_r.x = simplex->temp_buffer + 0 * n;
+    point_e.x = simplex->temp_buffer + 1 * n;
+    point_c.x = simplex->temp_buffer + 2 * n;
+    centroid.x = simplex->temp_buffer + 3 * n;
+
+    // sort points in the simplex so that simplex.p[0] is the point having
+    // minimum fx and simplex.p[n] is the one having the maximum fx
+    update_images(simplex->p, simplex->p + (n + 1), n, func, args);
+    simplex_sort(simplex);
+
+    // compute the simplex centroid
+    simplex_centroid(simplex, &centroid);
+
+    int iterations = 0;
+
+    // continue minimization until stop conditions are met
+    while (!should_stop_(simplex, iterations, params))
+    {
+        // uint32_t now = xTaskGetTickCount();
+
         int shrink = 0;
 
-        update_centroid(smpl);
-        update_simplex(alpha, &smpl->centroid, &smpl->centroid, worst,
-                       mdl, smpl, &smpl->reflected);
+        // if (verbose)
+        //     printf("Iteration %04d     ", iterations);
 
-        if (smpl->reflected.y < best->y)
+        update_point(simplex, &centroid, NM_RHO, &point_r);
+        point_r.fx = func(n, point_r.x, args);
+
+        if (point_r.fx < simplex->p[0].fx)
         {
-            update_simplex(gamma, &smpl->centroid, &smpl->reflected, &smpl->centroid,
-                           mdl, smpl, &smpl->expanded);
-            if (smpl->expanded.y < smpl->reflected.y)
+            update_point(simplex, &centroid, NM_RHO * NM_CHI, &point_e);
+
+            point_e.fx = func(n, point_e.x, args);
+            if (point_e.fx < point_r.fx)
             {
-                copy_point(smpl->n, &smpl->expanded, worst);
+                // expand
+                // if (verbose)
+                //     printf("expand          ");
+                copy_point_(n, &point_e, simplex->p + n);
             }
             else
             {
-                copy_point(smpl->n, &smpl->reflected, worst);
-            }
-        }
-        else if (smpl->reflected.y < (worst - 1)->y)
-        {
-            copy_point(smpl->n, &smpl->reflected, worst);
-        }
-        else if (smpl->reflected.y < worst->y)
-        {
-            update_simplex(rho, &smpl->centroid, &smpl->reflected, &smpl->centroid,
-                           mdl, smpl, &smpl->contracted);
-            shrink = smpl->contracted.y >= smpl->reflected.y;
-            if (!shrink)
-            {
-
-                copy_point(smpl->n, &smpl->contracted, worst);
+                // reflect
+                // if (verbose)
+                //     printf("reflect         ");
+                copy_point_(n, &point_r, simplex->p + n);
             }
         }
         else
         {
-            update_simplex(rho, &smpl->centroid, worst, &smpl->centroid,
-                           mdl, smpl, &smpl->contracted);
-            shrink = smpl->contracted.y > worst->y;
-            if (!shrink)
+            if (point_r.fx < simplex->p[n - 1].fx)
             {
-
-                copy_point(smpl->n, &smpl->contracted, worst);
+                // reflect
+                if (verbose)
+                    printf("reflect         ");
+                copy_point_(n, &point_r, simplex->p + n);
+            }
+            else
+            {
+                if (point_r.fx < simplex->p[n].fx)
+                {
+                    update_point(simplex, &centroid, NM_RHO * NM_GAMMA, &point_c);
+                    point_c.fx = func(n, point_c.x, args);
+                    if (point_c.fx <= point_r.fx)
+                    {
+                        // contract outside
+                        // if (verbose)
+                        //     printf("contract out    ");
+                        copy_point_(n, &point_c, simplex->p + n);
+                    }
+                    else
+                    {
+                        // shrink
+                        // if (verbose)
+                        //     printf("shrink         ");
+                        shrink = 1;
+                    }
+                }
+                else
+                {
+                    update_point(simplex, &centroid, -NM_GAMMA, &point_c);
+                    point_c.fx = func(n, point_c.x, args);
+                    if (point_c.fx <= simplex->p[n].fx)
+                    {
+                        // contract inside
+                        // if (verbose)
+                        //     printf("contract in     ");
+                        copy_point_(n, &point_c, simplex->p + n);
+                    }
+                    else
+                    {
+                        // shrink
+                        // if (verbose)
+                        //     printf("shrink         ");
+                        shrink = 1;
+                    }
+                }
             }
         }
-
         if (shrink)
         {
-
-            for (int i = 1; i < smpl->n + 1; i++)
+            simplex_shrink(simplex);
+            update_images(simplex->p + 1, simplex->p + (n + 1), n, func, args);
+            simplex_sort(simplex);
+        }
+        else
+        {
+            for (int i = n - 1; i >= 0 && simplex->p[i + 1].fx < simplex->p[i].fx; i--)
             {
-                update_simplex(sigma, best, smpl->vertices + i, best,
-                               mdl, smpl, smpl->vertices + i);
+                swap_points_(simplex->p + (i + 1), simplex->p + i);
             }
         }
-        sort(smpl);
+        simplex_centroid(simplex, &centroid);
+        ++iterations;
+
+        // if (verbose)
+        // {
+        //     // print current minimum
+        //     printf("[ ");
+        //     for (int i = 0; i < n; i++)
+        //     {
+        //         printf("%.2f ", simplex->p[0].x[i]);
+        //     }
+        //     printf("]    %.2f \n", simplex->p[0].fx);
+        // }
+        // uint32_t end = xTaskGetTickCount();
+
+        // uint32_t diff = end - now;
     }
 
-    // save best point in output argument
-    copy_point(smpl->n, best, out);
+    return iterations;
 }
-
-/*
- * Euclidean distance between two points
- */
-real distance(int n, const point *pnt0, const point *pnt1)
-{
-    real sum = 0.0f;
-    for (int i = 0; i < n; i++)
-    {
-        sum += SQR(pnt0->x[i] - pnt1->x[i]);
-    }
-    return sqrtf(sum);
-}
-
-/*
- * Simplex sorting
- */
-int compare(const void *arg1, const void *arg2)
-{
-    const real f1 = ((const point *)arg1)->y;
-    const real f2 = ((const point *)arg2)->y;
-    return (f1 > f2) - (f1 < f2);
-}
-
-void sort(simplex *smpl)
-{
-    qsort((void *)(smpl->vertices), (int)smpl->n + 1, sizeof(point), compare);
-}
-
-/*
- * Initial point at centroid, all vertices equally spaced, trial points allocated sss
- */
-void init_simplex(int n, real scale, const point *inp, simplex *smpl)
-{
-    // simplex *smpl = malloc(sizeof(simplex));
-    // smpl->vertices = malloc((n + 1) * sizeof(point));
-    smpl->n = n;
-    for (int i = 0; i < n + 1; i++)
-    { // simplex vertices
-        // smpl->vertices[i].x = malloc(n * sizeof(real));
-        // ASSERT(smpl->vertices[i].x);
-        for (int j = 0; j < n; j++)
-        { // coordinates
-            smpl->vertices[i].x[j] = 0.0f;
-        }
-    }
-    real b = 0.0f;
-    for (int j = 0; j < n; j++)
-    {
-        real c = sqrtf(1.0f - b);
-        smpl->vertices[j].x[j] = c;
-        real r = -(1.0f / n + b) / c;
-        for (int i = j + 1; i < n + 1; i++)
-        {
-            smpl->vertices[i].x[j] = r;
-        }
-        b += SQR(r);
-    }
-    for (int i = 0; i < n + 1; i++)
-    {
-        for (int j = 0; j < n; j++)
-        {
-            smpl->vertices[i].x[j] = scale * smpl->vertices[i].x[j] + inp->x[j];
-        }
-    }
-    // smpl->reflected = init_point(n);
-    // smpl->expanded = init_point(n);
-    // smpl->contracted = init_point(n);
-    // smpl->centroid = init_point(n);
-    smpl->num_iter = smpl->num_eval = 0;
-    // return smpl;
-}
-
-/*
- * Get centroid (average position) of simplex
- */
-void update_centroid(simplex *smpl)
-{
-    for (int j = 0; j < smpl->n; j++)
-    {
-        smpl->centroid.x[j] = 0.0f;
-        for (int i = 0; i < smpl->n; i++)
-        {
-            smpl->centroid.x[j] += smpl->vertices[i].x[j];
-        }
-        smpl->centroid.x[j] /= smpl->n;
-    }
-}
-
-/*
- * Extend a point from inp0 in the scaled direction of (inp1 - inp2)
- */
-void update_simplex(real scale, const point *inp0, const point *inp1, const point *inp2,
-                    const model *mdl, simplex *smpl, point *out)
-{
-
-    for (int j = 0; j < smpl->n; j++)
-    {
-        out->x[j] = inp0->x[j] + scale * (inp1->x[j] - inp2->x[j]);
-    }
-    cost(mdl, out);
-    smpl->num_eval++;
-}
-
-/*
- * Compute tolerance on x (Euclidean distance between coordinates of best and worst point)
- */
-real tolerance_x(const simplex *smpl)
-{
-    return distance(smpl->n, smpl->vertices, smpl->vertices + smpl->n);
-}
-
-/*
- * Compute tolerance on y (difference between values of best and worst point)
- */
-real tolerance_y(const simplex *smpl)
-{
-    return smpl->vertices[smpl->n].y - smpl->vertices[0].y;
-}
-
-/*
- * Terminate or continue?
- */
-int terminated(const simplex *smpl, const optimset *opt)
-{
-    return (
-               smpl->num_eval >= opt->max_eval ||
-               smpl->num_iter >= opt->max_iter) ||
-           (tolerance_x(smpl) <= opt->tol_x &&
-            tolerance_y(smpl) <= opt->tol_y);
-}
-
-/*
- * Point utilities
- */
-// point *init_point(int n)
-// {
-//     // point *pnt = malloc(sizeof(point));
-//     // ASSERT(pnt);
-//     // pnt->x = malloc(n * sizeof(real));
-//     // ASSERT(pnt->x);
-//     point pnt;
-//     return *pnt;
-// }
-
-void copy_point(int n, const point *inp, point *out)
-{
-    // memcpy(out->x, inp->x, n * sizeof(real));
-    for (int i = 0; i < n; i++)
-    {
-        out->x[i] = inp->x[i];
-    }
-    out->y = inp->y;
-}
-
-// /*
-//  * Memory utilities
-// //  */
-// void free_simplex(simplex *smpl)
-// {
-//     for (int i = 0; i < smpl->n; i++)
-//     {
-//         free(smpl->vertices[i].x);
-//     }
-//     free(smpl->vertices);
-//     free_point(&smpl->reflected);
-//     free_point(&smpl->expanded);
-//     free_point(&smpl->contracted);
-//     free_point(&smpl->centroid);
-//     free(smpl);
-// }
-
-// void free_point(point *pnt)
-// {
-//     free(pnt->x);
-//     free(pnt);
-// }
