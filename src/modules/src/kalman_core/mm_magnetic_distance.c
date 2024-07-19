@@ -112,10 +112,10 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
         nm_params_init_default(&paramsNM, 3);
         paramsNM.debug_log = 0;
-        paramsNM.max_iterations = 30;
+        paramsNM.max_iterations = 50;
         paramsNM.tol_fx = 1e-4f;
         paramsNM.tol_x = 1e-3f;
-        paramsNM.restarts = 1;
+        paramsNM.restarts = 0;
     }
 
     if (currentCalibrationTick < CALIBRATION_TIC_VALUE)
@@ -289,9 +289,9 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 }
 
 LOG_GROUP_START(Optimization_Model)
-// LOG_ADD(LOG_FLOAT, T_x, &estimated_position[0])
-// LOG_ADD(LOG_FLOAT, T_y, &estimated_position[1])
-// LOG_ADD(LOG_FLOAT, T_z, &estimated_position[2])
+LOG_ADD(LOG_FLOAT, T_x, &solution[0])
+LOG_ADD(LOG_FLOAT, T_y, &solution[1])
+LOG_ADD(LOG_FLOAT, T_z, &solution[2])
 
 // LOG_ADD(LOG_FLOAT, Inpt_x, &InputPoint[0])
 // LOG_ADD(LOG_FLOAT, Inpt_y, &InputPoint[1])
