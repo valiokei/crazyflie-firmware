@@ -22,6 +22,7 @@
 #include "i2cdev.h"
 #include "MagneticDeck.h"
 #include "nelder_mead.h"
+#include "usec_time.h"
 
 #define CONFIG_DEBUG = y
 static bool isInit = false;
@@ -800,28 +801,24 @@ void V_rx_derivate_z_function(float T_x, float T_y, float T_z, float W_x, float 
 
 const float myCostFunction(int n, const float *x, void *arg)
 {
+
     // cast the void pointer to what we expect to find
     myParams_t *params = (myParams_t *)arg;
 
     float costo = 0.0f;
 
     // compute the predicted voltage in in the initial point x
-    float V_predictedFromCurrentPnt[NUM_ANCHORS];
-    float B_field_vector[3];
+
+    // float startingx[3] = {x[0], x[1], x[2]};
+    float B_field_vector_Optim[3];
 
     for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
     {
 
-        get_B_field_for_a_Anchor(params->Anchors[anchorIdx], x, params->versore_orientamento_cf, B_field_vector);
-        V_predictedFromCurrentPnt[anchorIdx] = V_from_B(B_field_vector, params->versore_orientamento_cf, params->frequencies[anchorIdx], params->Gain);
+        get_B_field_for_a_Anchor(params->Anchors[anchorIdx], x, params->versore_orientamento_cf, B_field_vector_Optim);
+        costo += powf(V_from_B(B_field_vector_Optim, params->versore_orientamento_cf, params->frequencies[anchorIdx], params->Gain) - params->MeasuredVoltages_calibrated[anchorIdx], 2);
     }
 
-    // computing the cost  using the measured Voltages from args and the predicted Voltages
-    for (int i = 0; i < NUM_ANCHORS; i++)
-    {
-
-        costo += powf(V_predictedFromCurrentPnt[i] - params->MeasuredVoltages_calibrated[i], 2);
-    }
     return costo;
 }
 
@@ -1051,7 +1048,7 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
         // DEBUG_PRINT("STD increased for %s *2\n", anchorName);
     }
 
-    // estimatorEnqueueVolt(&volt);
+    estimatorEnqueueVolt(&volt);
 }
 
 static void mytask(void *param)
@@ -1112,6 +1109,8 @@ static void mytask(void *param)
 
     while (1)
     {
+        uint64_t start_cost = usecTimestamp();
+
         if (GainValue > 0)
         {
             DEBUG_PRINT("UPDATE FROM USER ON GAIN!!!!\n");
@@ -1204,6 +1203,8 @@ static void mytask(void *param)
         }
 
         // Defining the delay between the executions
+        float diff_in_ms = (float)(usecTimestamp() - start_cost) / 1000.0f;
+
         vTaskDelay(M2T(SYSTEM_PERIOD_MS));
     }
 }
@@ -1240,28 +1241,28 @@ DECK_DRIVER(magneticDriver);
 
 #define CONFIG_DEBUG_LOG_ENABLE = y
 
-LOG_GROUP_START(MAGNETIC_VOLTAGES)
-LOG_ADD(LOG_FLOAT, Nero, &NeroAmpl)
-LOG_ADD(LOG_FLOAT, Giallo, &GialloAmpl)
-LOG_ADD(LOG_FLOAT, Grigio, &GrigioAmpl)
-LOG_ADD(LOG_FLOAT, Rosso, &RossoAmpl)
-LOG_GROUP_STOP(MAGNETIC_VOLTAGES)
+// LOG_GROUP_START(MAGNETIC_VOLTAGES)
+// LOG_ADD(LOG_FLOAT, Nero, &NeroAmpl)
+// LOG_ADD(LOG_FLOAT, Giallo, &GialloAmpl)
+// LOG_ADD(LOG_FLOAT, Grigio, &GrigioAmpl)
+// LOG_ADD(LOG_FLOAT, Rosso, &RossoAmpl)
+// LOG_GROUP_STOP(MAGNETIC_VOLTAGES)
 
-PARAM_GROUP_START(MAGNETIC_Params)
-// PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
-// volatile int Nero_IDX = NeroIdx;
-PARAM_ADD(PARAM_FLOAT, std_magn, &MagneticStandardDeviation)
-// PARAM_ADD_CORE(PARAM_UINT16, Nero_Index, &Nero_IDX)
-// PARAM_ADD_CORE(PARAM_UINT16, Giallo_Index, &Giallo_Idx)
-// PARAM_ADD_CORE(PARAM_UINT16, Grigio_Index, &Grigio_Idx)
-// PARAM_ADD_CORE(PARAM_UINT16, Rosso_Index, &Rosso_Idx)
-PARAM_GROUP_STOP(MAGNETIC_Params)
+// PARAM_GROUP_START(MAGNETIC_Params)
+// // PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
+// // volatile int Nero_IDX = NeroIdx;
+// PARAM_ADD(PARAM_FLOAT, std_magn, &MagneticStandardDeviation)
+// // PARAM_ADD_CORE(PARAM_UINT16, Nero_Index, &Nero_IDX)
+// // PARAM_ADD_CORE(PARAM_UINT16, Giallo_Index, &Giallo_Idx)
+// // PARAM_ADD_CORE(PARAM_UINT16, Grigio_Index, &Grigio_Idx)
+// // PARAM_ADD_CORE(PARAM_UINT16, Rosso_Index, &Rosso_Idx)
+// PARAM_GROUP_STOP(MAGNETIC_Params)
 
-//// POTENTIOMETER
-LOG_GROUP_START(Potentiometer_g_L)
-LOG_ADD(LOG_FLOAT, GpS, &GainValue_Setted)
-LOG_GROUP_STOP(Potentiometer_G_L)
+// //// POTENTIOMETER
+// LOG_GROUP_START(Potentiometer_g_L)
+// LOG_ADD(LOG_FLOAT, GpS, &GainValue_Setted)
+// LOG_GROUP_STOP(Potentiometer_G_L)
 
-PARAM_GROUP_START(Potentiometer_G_P)
-PARAM_ADD(PARAM_FLOAT, G_pot, &GainValue)
-PARAM_GROUP_STOP(Potentiometer_G_P)
+// PARAM_GROUP_START(Potentiometer_G_P)
+// PARAM_ADD(PARAM_FLOAT, G_pot, &GainValue)
+// PARAM_GROUP_STOP(Potentiometer_G_P)

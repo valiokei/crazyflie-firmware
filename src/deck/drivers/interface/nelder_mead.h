@@ -2,6 +2,8 @@
 #define __NELDER_MEAD_H__
 
 #include "MagneticDeck.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /*
    Multivariable optimization without derivatives/gradients.
@@ -32,7 +34,7 @@ The full MIT License is listed at the end of the file.
 
 #define NM_SIGMA 0.5f
 #define NM_REAL float
-#define TEMP_POINT_COUNT_ 4
+#define TEMP_POINT_COUNT_ 4 // default 4
 #define DIMENSION 3
 typedef struct
 {

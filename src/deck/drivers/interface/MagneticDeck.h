@@ -42,7 +42,7 @@
 #define window_size 25
 
 // ------------------------ Calibration -------------------------------------------
-#define CALIBRATION_TIC_VALUE 500.0f // Number of measurements to perform the calibration
+#define CALIBRATION_TIC_VALUE 50.0f // Number of measurements to perform the calibration
 
 // ------------------------System HZ-------------------------------------------
 #define SYSTEM_HZ 10

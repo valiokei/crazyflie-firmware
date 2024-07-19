@@ -1,10 +1,8 @@
 #include "nelder_mead.h"
-// #include "MagneticDeck.h"
-#include <stdio.h>
-#include <stdlib.h>
+
 #include <math.h>
-#include <string.h>
-// #include "FreeRTOS.h"
+#include "FreeRTOS.h"
+#include "usec_time.h"
 
 int verbose = 0;
 
@@ -212,10 +210,6 @@ nm_result_t nm_multivar_optimize(
     const nm_params_t *params,
     NM_REAL *out)
 {
-    float tol_x = params->tol_x;
-    float tol_fx = params->tol_fx;
-    int max_iterations = params->max_iterations;
-    int restarts = params->restarts;
 
     nm_simplex_t simplex;
     nm_simplex_init(&simplex, dimension);
@@ -276,11 +270,13 @@ int nm_simplex_iterate(
     simplex_centroid(simplex, &centroid);
 
     int iterations = 0;
-
+    uint32_t now_tick = xTaskGetTickCount();
+    uint64_t now = usecTimestamp();
     // continue minimization until stop conditions are met
     while (!should_stop_(simplex, iterations, params))
     {
-        // uint32_t now = xTaskGetTickCount();
+
+        vTaskDelay(M2T(1));
 
         int shrink = 0;
 
@@ -315,8 +311,8 @@ int nm_simplex_iterate(
             if (point_r.fx < simplex->p[n - 1].fx)
             {
                 // reflect
-                if (verbose)
-                    printf("reflect         ");
+                // if (verbose)
+                //     printf("reflect         ");
                 copy_point_(n, &point_r, simplex->p + n);
             }
             else
@@ -387,10 +383,17 @@ int nm_simplex_iterate(
         //     }
         //     printf("]    %.2f \n", simplex->p[0].fx);
         // }
-        // uint32_t end = xTaskGetTickCount();
 
         // uint32_t diff = end - now;
     }
+    uint32_t end_tick = xTaskGetTickCount();
+    uint64_t end = usecTimestamp();
+
+    float diff_in_S = (float)(end - now) / 1000000.0f;
+    float diff_in_ms = (float)(end - now) / 1000.0f;
+
+    float diff_in_S_tick = (float)(end_tick - now_tick) / configTICK_RATE_HZ;
+    float diff_in_ms_tick = (float)(end_tick - now_tick) * 1000.0f / configTICK_RATE_HZ;
 
     return iterations;
 }

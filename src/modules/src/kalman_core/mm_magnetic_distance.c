@@ -11,6 +11,8 @@
 #include <time.h>
 #include <MagneticDeck.h>
 
+#include "usec_time.h"
+
 #include "nelder_mead.h"
 
 float Optimization_Model_STD = 0.05f;
@@ -55,6 +57,8 @@ float CG_a3 = 1.0f;         // GRIGIO
 float default_CG_a4 = 7.5f; // ROSSO
 float CG_a4 = 1.0f;         // ROSSO
 
+float calibrationsGains[4];
+
 float CalibrationRapport_anchor1 = 1.0f;
 float CalibrationRapport_anchor2 = 1.0f;
 float CalibrationRapport_anchor3 = 1.0f;
@@ -86,10 +90,17 @@ static bool isFirstMeasurement = true;
 
 static float estimated_position[3];
 
+static int counter = 0;
+
+// Set the range where to look for the minumum
+static float range[3] = {-0.2f, +0.2f, 0.2f};
+static float solution[3];
+static nm_params_t paramsNM;
+
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
 
-    static nm_params_t paramsNM;
+    // float all_start = usecTimestamp();
 
     if (!isInitialized)
     {
@@ -101,7 +112,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
         nm_params_init_default(&paramsNM, 3);
         paramsNM.debug_log = 0;
-        paramsNM.max_iterations = 50;
+        paramsNM.max_iterations = 30;
         paramsNM.tol_fx = 1e-4f;
         paramsNM.tol_x = 1e-3f;
         paramsNM.restarts = 1;
@@ -165,6 +176,11 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             CG_a2 = meanData_a2 / V_rx_2;
             CG_a3 = meanData_a3 / V_rx_3;
             CG_a4 = meanData_a4 / V_rx_4;
+            calibrationsGains[0] = CG_a1;
+            calibrationsGains[1] = CG_a2;
+            calibrationsGains[2] = CG_a3;
+            calibrationsGains[3] = CG_a4;
+
             DEBUG_PRINT("CG_a1 = %f\n", (double)CG_a1);
             DEBUG_PRINT("CG_a2 = %f\n", (double)CG_a2);
             DEBUG_PRINT("CG_a3 = %f\n", (double)CG_a3);
@@ -185,36 +201,22 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 // paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
             }
 
-            // DEBUG_PRINT("sRunning case!!\n");
             // ------------------------------------ RUNNING CASE ------------------------------------
-            // start_timer();     // start the timer.
-            // it1 = get_timer(); // store current cycle-count in a local
-
-            // computing the B field for each of the 4 anchors
-            point_t cfPosP;
-            estimatorKalmanGetEstimatedPos(&cfPosP);
-            float cfPos[3] = {cfPosP.x, cfPosP.y, cfPosP.z};
-            T_pre_x_fk = cfPos[0];
-            T_pre_y_fk = cfPos[1];
-            T_pre_z_fk = cfPos[2];
-
-            // float tag_pos_predicted[3] = {cfPos[0], cfPos[1], cfPos[2]};
-            // float tag_pos_predicted[3] = {0.0, 0.0, 0.0};
 
             float RotationMatrix[3][3];
             // it would be the product between the rotation matrix and the initial [0,0,1] versor
             estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
             float tag_or_versor[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
-            // float tag_or_versor[3] = {0.0, 0.0, 1.0};
 
-            MeasuredVoltages_calibrated[0] = voltAnchor->measuredVolt[0] / CG_a1;
-            MeasuredVoltages_calibrated[1] = voltAnchor->measuredVolt[1] / CG_a2;
-            MeasuredVoltages_calibrated[2] = voltAnchor->measuredVolt[2] / CG_a3;
-            MeasuredVoltages_calibrated[3] = voltAnchor->measuredVolt[3] / CG_a4;
+            // for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
+            // {
+            // }
 
             /// ------------------------- optimization  for computing position -------------------------
 
             // initialize the params for the optimization algorithm
+            // float my_params_start_cost_all = usecTimestamp();
+
             myParams_t my_params;
             for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
             {
@@ -230,16 +232,17 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
                 my_params.frequencies[anchorIdx] = voltAnchor->resonanceFrequency[anchorIdx];
                 // using the measured volts to fill the structure
-                my_params.MeasuredVoltages_calibrated[anchorIdx] = MeasuredVoltages_calibrated[anchorIdx];
+                my_params.MeasuredVoltages_calibrated[anchorIdx] = voltAnchor->measuredVolt[anchorIdx] / calibrationsGains[anchorIdx];
             }
+            // float my_params_ms = (float)(usecTimestamp() - my_params_start_cost_all) / 1000.0f;
 
             // set the starting point for the optimization algorithm
             float x_start[3] = {};
             if (isFirstMeasurement)
             {
-                x_start[0] = cfPos[0];
-                x_start[1] = cfPos[1];
-                x_start[2] = cfPos[2];
+                x_start[0] = this->S[KC_STATE_X];
+                x_start[1] = this->S[KC_STATE_Y];
+                x_start[2] = this->S[KC_STATE_Z];
                 isFirstMeasurement = false;
             }
             else
@@ -253,21 +256,11 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 x_start[2] = estimated_position[2];
             }
 
-            // Set the range where to look for the minumum
-            float range[3] = {-0.5f, +0.5f, 0.5f};
-            float solution[3];
+            // float optimize_start_cost_all = usecTimestamp();
             nm_result_t result = nm_multivar_optimize(3, x_start, range, &myCostFunction, &my_params, &paramsNM, solution);
-
-            float start_fx = myCostFunction(3, x_start, &my_params);
-            estimated_position[0] = solution[0];
-            estimated_position[1] = solution[1];
-            estimated_position[2] = solution[2];
+            // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
 
             /// ------------------------- optimization  for computing position -------------------------
-
-            // float error_x = ;
-            // float error_y = ;
-            // float error_z = ;
 
             float h_x[KC_STATE_DIM] = {0};
             arm_matrix_instance_f32 H_x = {1, KC_STATE_DIM, h_x};
@@ -281,31 +274,36 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             arm_matrix_instance_f32 H_z = {1, KC_STATE_DIM, h_z};
             h_z[KC_STATE_Z] = 1;
 
-            kalmanCoreScalarUpdate(this, &H_x, estimated_position[0] - cfPos[0], Optimization_Model_STD);
-            kalmanCoreScalarUpdate(this, &H_y, estimated_position[1] - cfPos[1], Optimization_Model_STD);
-            kalmanCoreScalarUpdate(this, &H_z, estimated_position[2] - cfPos[2], Optimization_Model_STD);
+            // float EKF_UPDATE_start_cost_all = usecTimestamp();
+            kalmanCoreScalarUpdate(this, &H_x, solution[0] - this->S[KC_STATE_X], Optimization_Model_STD);
+            kalmanCoreScalarUpdate(this, &H_y, solution[1] - this->S[KC_STATE_Y], Optimization_Model_STD);
+            kalmanCoreScalarUpdate(this, &H_z, solution[2] - this->S[KC_STATE_Z], Optimization_Model_STD);
+            // float EKF_UPDATE_ms = (float)(usecTimestamp() - EKF_UPDATE_start_cost_all) / 1000.0f;
 
-            DEBUG_PRINT("Estimated position x: %f,\n", (double)estimated_position[0]);
+            // float ALL_ms = (float)(usecTimestamp() - all_start) / 1000.0f;
+
+            // float a = 0;
+            // DEBUG_PRINT("Estimated position x: %f,\n", (double)estimated_position[0]);
         }
     }
 }
 
-// LOG_GROUP_START(Optimization_Model)
+LOG_GROUP_START(Optimization_Model)
 // LOG_ADD(LOG_FLOAT, T_x, &estimated_position[0])
 // LOG_ADD(LOG_FLOAT, T_y, &estimated_position[1])
 // LOG_ADD(LOG_FLOAT, T_z, &estimated_position[2])
 
-// // LOG_ADD(LOG_FLOAT, Inpt_x, &InputPoint[0])
-// // LOG_ADD(LOG_FLOAT, Inpt_y, &InputPoint[1])
-// // LOG_ADD(LOG_FLOAT, Inpt_z, &InputPoint[2])
+// LOG_ADD(LOG_FLOAT, Inpt_x, &InputPoint[0])
+// LOG_ADD(LOG_FLOAT, Inpt_y, &InputPoint[1])
+// LOG_ADD(LOG_FLOAT, Inpt_z, &InputPoint[2])
 
-// LOG_GROUP_STOP(Optimization_Model)
+LOG_GROUP_STOP(Optimization_Model)
 
 // PARAM_GROUP_START(Opt_Model_Param)
 // PARAM_ADD(PARAM_FLOAT, Opt_STD, &Optimization_Model_STD)
 // PARAM_GROUP_STOP(Opt_Model_Param)
 
-// LOG_GROUP_START(Dipole_Model)
+LOG_GROUP_START(Dipole_Model)
 
 // // LOG_ADD(LOG_UINT32, CPUCycle, &it2)
 
@@ -319,17 +317,17 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 // LOG_ADD(LOG_FLOAT, ERR3, &E_3)
 // LOG_ADD(LOG_FLOAT, ERR4, &E_4)
 
-// LOG_ADD(LOG_FLOAT, M_V1, &MeasuredVoltages_calibrated[0])
-// LOG_ADD(LOG_FLOAT, M_V2, &MeasuredVoltages_calibrated[1])
-// LOG_ADD(LOG_FLOAT, M_V3, &MeasuredVoltages_calibrated[2])
-// LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages_calibrated[3])
+LOG_ADD(LOG_FLOAT, M_V1, &MeasuredVoltages_calibrated[0])
+LOG_ADD(LOG_FLOAT, M_V2, &MeasuredVoltages_calibrated[1])
+LOG_ADD(LOG_FLOAT, M_V3, &MeasuredVoltages_calibrated[2])
+LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages_calibrated[3])
 
 // LOG_ADD(LOG_FLOAT, P_V_0, &PredictedVoltages[0])
 // LOG_ADD(LOG_FLOAT, P_V_1, &PredictedVoltages[1])
 // LOG_ADD(LOG_FLOAT, P_V_2, &PredictedVoltages[2])
 // LOG_ADD(LOG_FLOAT, P_V_3, &PredictedVoltages[3])
 
-// LOG_GROUP_STOP(Dipole_Model)
+LOG_GROUP_STOP(Dipole_Model)
 
 // PARAM_GROUP_START(Dipole_Params)
 // PARAM_ADD(PARAM_UINT16, calibTic, &currentCalibrationTick)
