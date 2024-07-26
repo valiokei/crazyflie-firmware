@@ -13,7 +13,8 @@
 
 #include "usec_time.h"
 
-#include "nelder_mead.h"
+#include "nelder_mead_4A.h"
+#include "nelder_mead_3A.h"
 
 float Optimization_Model_STD = 0.05f;
 
@@ -95,7 +96,8 @@ static int counter = 0;
 // Set the range where to look for the minumum
 static float range[3] = {-0.2f, +0.2f, 0.2f};
 static float solution[3];
-static nm_params_t paramsNM;
+static nm_params_t_3A paramsNM_3A;
+static nm_params_t_4A paramsNM_4A;
 
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
@@ -110,12 +112,19 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
         // initialize the optimization model parameters
 
-        nm_params_init_default(&paramsNM, 3);
-        paramsNM.debug_log = 0;
-        paramsNM.max_iterations = 50;
-        paramsNM.tol_fx = 1e-4f;
-        paramsNM.tol_x = 1e-3f;
-        paramsNM.restarts = 0;
+        nm_params_init_default_3A(&paramsNM_3A, 3);
+        paramsNM_3A.debug_log = 0;
+        paramsNM_3A.max_iterations = 15;
+        paramsNM_3A.tol_fx = 1e-6f;
+        paramsNM_3A.tol_x = 1e-5f;
+        paramsNM_3A.restarts = 0;
+
+        nm_params_init_default_4A(&paramsNM_4A, 3);
+        paramsNM_4A.debug_log = 0;
+        paramsNM_4A.max_iterations = 15;
+        paramsNM_4A.tol_fx = 1e-6f;
+        paramsNM_4A.tol_x = 1e-5f;
+        paramsNM_4A.restarts = 0;
     }
 
     if (currentCalibrationTick < CALIBRATION_TIC_VALUE)
@@ -216,27 +225,6 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
             // initialize the params for the optimization algorithm
             // float my_params_start_cost_all = usecTimestamp();
-
-            myParams_t my_params;
-            for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
-            {
-                my_params.Anchors[anchorIdx][0] = voltAnchor->x[anchorIdx];
-                my_params.Anchors[anchorIdx][1] = voltAnchor->y[anchorIdx];
-                my_params.Anchors[anchorIdx][2] = voltAnchor->z[anchorIdx];
-
-                my_params.versore_orientamento_cf[0] = tag_or_versor[0];
-                my_params.versore_orientamento_cf[1] = tag_or_versor[1];
-                my_params.versore_orientamento_cf[2] = tag_or_versor[2];
-
-                my_params.Gain = voltAnchor->GainValue;
-
-                my_params.frequencies[anchorIdx] = voltAnchor->resonanceFrequency[anchorIdx];
-                // using the measured volts to fill the structure
-                my_params.MeasuredVoltages_calibrated[anchorIdx] = voltAnchor->measuredVolt[anchorIdx] / calibrationsGains[anchorIdx];
-            }
-            // float my_params_ms = (float)(usecTimestamp() - my_params_start_cost_all) / 1000.0f;
-
-            // set the starting point for the optimization algorithm
             float x_start[3] = {};
             if (isFirstMeasurement)
             {
@@ -256,9 +244,62 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 x_start[2] = estimated_position[2];
             }
 
-            // float optimize_start_cost_all = usecTimestamp();
-            nm_result_t result = nm_multivar_optimize(3, x_start, range, &myCostFunction, &my_params, &paramsNM, solution);
-            // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
+            if (voltAnchor->Id_in_saturation != 10)
+            {
+                myParams_t_3A my_params;
+                for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
+                {
+                    my_params.Anchors_3A[anchorIdx][0] = voltAnchor->x[anchorIdx];
+                    my_params.Anchors_3A[anchorIdx][1] = voltAnchor->y[anchorIdx];
+                    my_params.Anchors_3A[anchorIdx][2] = voltAnchor->z[anchorIdx];
+
+                    my_params.versore_orientamento_cf_3A[0] = tag_or_versor[0];
+                    my_params.versore_orientamento_cf_3A[1] = tag_or_versor[1];
+                    my_params.versore_orientamento_cf_3A[2] = tag_or_versor[2];
+
+                    my_params.Gain_3A = voltAnchor->GainValue;
+
+                    my_params.frequencies_3A[anchorIdx] = voltAnchor->resonanceFrequency[anchorIdx];
+                    // using the measured volts to fill the structure
+                    my_params.MeasuredVoltages_calibrated_3A[anchorIdx] = voltAnchor->measuredVolt[anchorIdx] / calibrationsGains[anchorIdx];
+                    MeasuredVoltages_calibrated[anchorIdx] = my_params.MeasuredVoltages_calibrated_3A[anchorIdx];
+                }
+                // float my_params_ms = (float)(usecTimestamp() - my_params_start_cost_all) / 1000.0f;
+
+                // set the starting point for the optimization algorithm
+
+                // float optimize_start_cost_all = usecTimestamp();
+                nm_result_t_3A result = nm_multivar_optimize_3A(3, x_start, range, &myCostFunction_3A, &my_params, &paramsNM_3A, solution);
+                // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
+            }
+            else
+            {
+                myParams_t_4A my_params;
+                for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
+                {
+                    my_params.Anchors_4A[anchorIdx][0] = voltAnchor->x[anchorIdx];
+                    my_params.Anchors_4A[anchorIdx][1] = voltAnchor->y[anchorIdx];
+                    my_params.Anchors_4A[anchorIdx][2] = voltAnchor->z[anchorIdx];
+
+                    my_params.versore_orientamento_cf_4A[0] = tag_or_versor[0];
+                    my_params.versore_orientamento_cf_4A[1] = tag_or_versor[1];
+                    my_params.versore_orientamento_cf_4A[2] = tag_or_versor[2];
+
+                    my_params.Gain_4A = voltAnchor->GainValue;
+
+                    my_params.frequencies_4A[anchorIdx] = voltAnchor->resonanceFrequency[anchorIdx];
+                    // using the measured volts to fill the structure
+                    my_params.MeasuredVoltages_calibrated_4A[anchorIdx] = voltAnchor->measuredVolt[anchorIdx] / calibrationsGains[anchorIdx];
+                    MeasuredVoltages_calibrated[anchorIdx] = my_params.MeasuredVoltages_calibrated_4A[anchorIdx];
+                }
+                // float my_params_ms = (float)(usecTimestamp() - my_params_start_cost_all) / 1000.0f;
+
+                // set the starting point for the optimization algorithm
+
+                // float optimize_start_cost_all = usecTimestamp();
+                nm_result_t_4A result = nm_multivar_optimize_4A(3, x_start, range, &myCostFunction_4A, &my_params, &paramsNM_4A, solution);
+                // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
+            }
 
             /// ------------------------- optimization  for computing position -------------------------
 
@@ -281,6 +322,7 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             // float EKF_UPDATE_ms = (float)(usecTimestamp() - EKF_UPDATE_start_cost_all) / 1000.0f;
 
             // float ALL_ms = (float)(usecTimestamp() - all_start) / 1000.0f;
+            // DEBUG_PRINT("ALL_ms = %f\n", (double)ALL_ms);
 
             // float a = 0;
             // DEBUG_PRINT("Estimated position x: %f,\n", (double)estimated_position[0]);

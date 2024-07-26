@@ -21,7 +21,8 @@
 #include "param.h"
 #include "i2cdev.h"
 #include "MagneticDeck.h"
-#include "nelder_mead.h"
+#include "nelder_mead_3A.h"
+#include "nelder_mead_4A.h"
 #include "usec_time.h"
 
 #define CONFIG_DEBUG = y
@@ -220,6 +221,50 @@ float computeSTD(float *data, int arrayDimension)
     return sqrtf(standardDeviation / arrayDimension);
 }
 
+// function that given 3 points reonctruct a paraboloid and extract the peack
+typedef struct
+{
+    float x;
+    float y;
+} Point_magnetic_fft;
+
+void reconstructParabolaAndFindPeak(Point_magnetic_fft p1, Point_magnetic_fft p2, Point_magnetic_fft p3, Point_magnetic_fft *peak)
+{
+    // Matrice dei coefficienti
+    float A[3][3] = {
+        {p1.x * p1.x, p1.x, 1},
+        {p2.x * p2.x, p2.x, 1},
+        {p3.x * p3.x, p3.x, 1}};
+
+    // Vettore dei termini noti
+    float B[3] = {p1.y, p2.y, p3.y};
+
+    // Risolvi il sistema di equazioni lineari A * [a, b, c]^T = B
+    // Utilizza il metodo di eliminazione di Gauss
+
+    // Per semplicità, assumiamo che la soluzione sia unica e non degenerata
+    // Implementazione semplificata dell'eliminazione di Gauss
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = i + 1; j < 3; j++)
+        {
+            float ratio = A[j][i] / A[i][i];
+            for (int k = 0; k < 3; k++)
+            {
+                A[j][k] -= ratio * A[i][k];
+            }
+            B[j] -= ratio * B[i];
+        }
+    }
+
+    float c = B[2] / A[2][2];
+    float b = (B[1] - A[1][2] * c) / A[1][1];
+    float a = (B[0] - A[0][2] * c - A[0][1] * b) / A[0][0];
+
+    // Il picco della parabola è nel vertice x = -b / (2a)
+    peak->x = -b / (2 * a);
+    peak->y = a * peak->x * peak->x + b * peak->x + c;
+}
 // ---------------- Measurement Model Functions ------------------------------
 void get_B_field_for_a_Anchor(float *anchor_pos,
                               const float *tag_pos,
@@ -799,11 +844,11 @@ void V_rx_derivate_z_function(float T_x, float T_y, float T_z, float W_x, float 
 
 // --------------------- Nelder-Mead functions ---------------------
 
-const float myCostFunction(int n, const float *x, void *arg)
+const float myCostFunction_3A(int n, const float *x, void *arg)
 {
 
     // cast the void pointer to what we expect to find
-    myParams_t *params = (myParams_t *)arg;
+    myParams_t_3A *params = (myParams_t_3A *)arg;
 
     float costo = 0.0f;
 
@@ -815,12 +860,68 @@ const float myCostFunction(int n, const float *x, void *arg)
     for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
     {
 
-        get_B_field_for_a_Anchor(params->Anchors[anchorIdx], x, params->versore_orientamento_cf, B_field_vector_Optim);
-        costo += powf(V_from_B(B_field_vector_Optim, params->versore_orientamento_cf, params->frequencies[anchorIdx], params->Gain) - params->MeasuredVoltages_calibrated[anchorIdx], 2);
+        get_B_field_for_a_Anchor(params->Anchors_3A[anchorIdx], x, params->versore_orientamento_cf_3A, B_field_vector_Optim);
+        costo += powf(V_from_B(B_field_vector_Optim, params->versore_orientamento_cf_3A, params->frequencies_3A[anchorIdx], params->Gain_3A) - params->MeasuredVoltages_calibrated_3A[anchorIdx], 2);
     }
 
     return costo;
 }
+const float myCostFunction_4A(int n, const float *x, void *arg)
+{
+
+    // cast the void pointer to what we expect to find
+    myParams_t_4A *params = (myParams_t_4A *)arg;
+
+    float costo = 0.0f;
+
+    // compute the predicted voltage in in the initial point x
+
+    // float startingx[3] = {x[0], x[1], x[2]};
+    float B_field_vector_Optim[3];
+
+    for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
+    {
+
+        get_B_field_for_a_Anchor(params->Anchors_4A[anchorIdx], x, params->versore_orientamento_cf_4A, B_field_vector_Optim);
+        costo += powf(V_from_B(B_field_vector_Optim, params->versore_orientamento_cf_4A, params->frequencies_4A[anchorIdx], params->Gain_4A) - params->MeasuredVoltages_calibrated_4A[anchorIdx], 2);
+    }
+
+    return costo;
+}
+// ---------------------Grid Search ---------------------
+
+// const float GridSearchCostFunction(int dx, int dy, float initial_x, float initial_y, float initial_z, float step, void *arg, float min_x, float min_y)
+// {
+
+//     // cast the void pointer to what we expect to find
+//     myParams_t *myParams = (myParams_t *)arg;
+
+//     // computing the value of the cost function in each point (of step step) of the give area (dx * dy) and the find the x and the y of the minimum value
+//     float minCost = 1000000.0f;
+//     float cost = 0.0f;
+//     float x = initial_x;
+//     float y = initial_y;
+//     min_x = 1000000.0f;
+//     min_y = 1000000.0f;
+
+//     for (int i = 0; i < dx; i++)
+//     {
+//         for (int j = 0; j < dy; j++)
+//         {
+//             cost = myCostFunction(3, (const float[]){x, y, initial_z}, &myParams);
+//             if (cost < minCost)
+//             {
+//                 minCost = cost;
+//                 // Store the x and y values associated with the minimum cost
+//                 min_x = x;
+//                 min_y = y;
+//             }
+//             y += step;
+//         }
+//         x += step;
+//         y = initial_y;
+//     }
+// }
 
 // -------------------- Cycling Function ----------------------------
 
@@ -870,19 +971,57 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     // Extract the maximum value and its index around NeroIdx
     uint32_t maxindex;
     arm_max_f32(&fft_magnitude[NeroIdx - 2], 4, &NeroAmpl, &maxindex);
-    NeroAmpl = NeroAmpl * flattopCorrectionFactor * 2.0f;
+    // get the value before and the value after the maximum value
+    float beforeNero = fft_magnitude[NeroIdx - 2];
+    float afterNero = fft_magnitude[NeroIdx + 1];
+    // define the points
+    Point_magnetic_fft NeroPoint = {NeroIdx, NeroAmpl};
+    Point_magnetic_fft beforeNeroPoint = {NeroIdx - 2, beforeNero};
+    Point_magnetic_fft afterNeroPoint = {NeroIdx + 1, afterNero};
+    // find the peach of the signal
+    Point_magnetic_fft NeroMaxPoint;
+    reconstructParabolaAndFindPeak(beforeNeroPoint, NeroPoint, afterNeroPoint, &NeroMaxPoint);
+    NeroAmpl = NeroMaxPoint.y * flattopCorrectionFactor * 2.0f;
 
     // Calculate the maximum value and its index around GialloIdx
     arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &GialloAmpl, &maxindex);
-    GialloAmpl = GialloAmpl * flattopCorrectionFactor * 2.0f;
+    // get the value before and the value after the maximum value
+    float beforeGiallo = fft_magnitude[GialloIdx - 2];
+    float afterGiallo = fft_magnitude[GialloIdx + 1];
+    // define the points
+    Point_magnetic_fft GialloPoint = {GialloIdx, GialloAmpl};
+    Point_magnetic_fft beforeGialloPoint = {GialloIdx - 2, beforeGiallo};
+    Point_magnetic_fft afterGialloPoint = {GialloIdx + 1, afterGiallo};
+    // find the peach of the signal
+    Point_magnetic_fft GialloMaxPoint;
+    reconstructParabolaAndFindPeak(beforeGialloPoint, GialloPoint, afterGialloPoint, &GialloMaxPoint);
+    GialloAmpl = GialloMaxPoint.y * flattopCorrectionFactor * 2.0f;
 
     // Calculate the maximum value and its index around GrigioIdx
     arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &GrigioAmpl, &maxindex);
-    GrigioAmpl = GrigioAmpl * flattopCorrectionFactor * 2.0f;
+    float beforeGrigio = fft_magnitude[GrigioIdx - 2];
+    float afterGrigio = fft_magnitude[GrigioIdx + 1];
+    // define the points
+    Point_magnetic_fft GrigioPoint = {GrigioIdx, GrigioAmpl};
+    Point_magnetic_fft beforeGrigioPoint = {GrigioIdx - 2, beforeGrigio};
+    Point_magnetic_fft afterGrigioPoint = {GrigioIdx + 1, afterGrigio};
+    // find the peach of the signal
+    Point_magnetic_fft GrigioMaxPoint;
+    reconstructParabolaAndFindPeak(beforeGrigioPoint, GrigioPoint, afterGrigioPoint, &GrigioMaxPoint);
+    GrigioAmpl = GrigioMaxPoint.y * flattopCorrectionFactor * 2.0f;
 
     // Calculate the maximum value and its index around RossoIdx
     arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &RossoAmpl, &maxindex);
-    RossoAmpl = RossoAmpl * flattopCorrectionFactor * 2.0f;
+    float beforeRosso = fft_magnitude[RossoIdx - 2];
+    float afterRosso = fft_magnitude[RossoIdx + 1];
+    // define the points
+    Point_magnetic_fft RossoPoint = {RossoIdx, RossoAmpl};
+    Point_magnetic_fft beforeRossoPoint = {RossoIdx - 2, beforeRosso};
+    Point_magnetic_fft afterRossoPoint = {RossoIdx + 1, afterRosso};
+    // find the peach of the signal
+    Point_magnetic_fft RossoMaxPoint;
+    reconstructParabolaAndFindPeak(beforeRossoPoint, RossoPoint, afterRossoPoint, &RossoMaxPoint);
+    RossoAmpl = RossoMaxPoint.y * flattopCorrectionFactor * 2.0f;
 
     // --------------------------------- 2D MEASUREMENT MODEL - DISTANCE COMPUTATION ---------------------------------
     /*
@@ -985,6 +1124,7 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
 
     // ---------------------- SATURATION CASE -------------------------------------
 
+    int isSaturated = 0;
     // check if the max is saturating
     if (maxSat >= 2.5f)
     {
@@ -993,7 +1133,7 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
         // if the max is saturating, then skip this measurement
         if (counterSaturation % 10 == 0)
         {
-            DEBUG_PRINT("Saturating\n");
+            // DEBUG_PRINT("Saturating\n");
         }
         counterSaturation++;
 
@@ -1043,12 +1183,15 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
         // volt.stdDev[maxAnchorId] = MagneticStandardDeviation * 2;
 
         volt.Id_in_saturation = maxAnchorId;
-        // return;
+        isSaturated = 1;
 
         // DEBUG_PRINT("STD increased for %s *2\n", anchorName);
     }
 
-    estimatorEnqueueVolt(&volt);
+    if (isSaturated == 0)
+    {
+        estimatorEnqueueVolt(&volt);
+    }
 }
 
 static void mytask(void *param)

@@ -42,10 +42,10 @@
 #define window_size 25
 
 // ------------------------ Calibration -------------------------------------------
-#define CALIBRATION_TIC_VALUE 50.0f // Number of measurements to perform the calibration
+#define CALIBRATION_TIC_VALUE 150.0f // Number of measurements to perform the calibration
 
 // ------------------------System HZ-------------------------------------------
-#define SYSTEM_HZ 10
+#define SYSTEM_HZ 50
 #define SYSTEM_PERIOD_MS (1000 / SYSTEM_HZ)
 
 // ------------------------ Anchors Parameters -------------------------------------------
@@ -56,36 +56,36 @@
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-#define Nero_Position_x -0.72f
-#define Nero_Position_y -0.76f
-#define Nero_Position_z +0.78f
+#define Nero_Position_x 0.48f
+#define Nero_Position_y 0.48f
+#define Nero_Position_z +0.35f
 #define Nero_Id 0
 
 #define GialloResFreq 203e3
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-#define Giallo_Position_x +0.64f
-#define Giallo_Position_y +0.5f
-#define Giallo_Position_z +0.78f
+#define Giallo_Position_x +0.48f
+#define Giallo_Position_y -0.48f
+#define Giallo_Position_z +0.35f
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-#define Grigio_Position_x -0.64f
-#define Grigio_Position_y +0.5f
-#define Grigio_Position_z +0.78f
+#define Grigio_Position_x -0.48f
+#define Grigio_Position_y -0.48f
+#define Grigio_Position_z +0.35f
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-#define Rosso_Position_x +0.64f
-#define Rosso_Position_y -0.5f
-#define Rosso_Position_z +0.78f
+#define Rosso_Position_x -0.48f
+#define Rosso_Position_y +0.48f
+#define Rosso_Position_z +0.35f
 #define Rosso_Id 3
 
 // ------------------------ PHYSICAL COIL -------------------------------------------
@@ -172,7 +172,8 @@ void V_rx_derivate_z_function(float T_x, float T_y, float T_z, float W_x, float 
                               float F_0, float F_1, float F_2, float F_3, float V_rx_derivate_z[4]);
 
 // -------------------------- NELDER-MEAD Functions -------------------------------------------
-const float myCostFunction(int n, const float *x, void *arg);
+const float myCostFunction_3A(int n, const float *x, void *arg);
+const float myCostFunction_4A(int n, const float *x, void *arg);
 
 // -------------------------- Math Utils -------------------------------------------
 

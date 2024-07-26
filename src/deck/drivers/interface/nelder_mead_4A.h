@@ -1,9 +1,10 @@
-#ifndef __NELDER_MEAD_H__
-#define __NELDER_MEAD_H__
+#ifndef __NELDER_MEAD_4A_H__
+#define __NELDER_MEAD_4A_H__
 
-#include "MagneticDeck.h"
+// #include "MagneticDeck.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "MagneticDeck.h"
 
 /*
    Multivariable optimization without derivatives/gradients.
@@ -35,15 +36,19 @@ The full MIT License is listed at the end of the file.
 #define NM_SIGMA 0.5f
 #define NM_REAL float
 #define TEMP_POINT_COUNT_ 4 // default 4
+
 #define DIMENSION 3
+
+#define num_anchors_to_take_4A 4
+
 typedef struct
 {
-    float Anchors[NUM_ANCHORS][3];
-    float versore_orientamento_cf[3];
-    float frequencies[NUM_ANCHORS];
-    float MeasuredVoltages_calibrated[NUM_ANCHORS];
-    float Gain;
-} myParams_t;
+    float Anchors_4A[num_anchors_to_take_4A][DIMENSION];
+    float versore_orientamento_cf_4A[DIMENSION];
+    float frequencies_4A[num_anchors_to_take_4A];
+    float MeasuredVoltages_calibrated_4A[num_anchors_to_take_4A];
+    float Gain_4A;
+} myParams_t_4A;
 
 // Cost function.
 
@@ -51,7 +56,7 @@ typedef struct
 // - number of variables
 // - point (array of n values)
 // - args is user  data
-typedef NM_REAL (*nm_multivar_real_func_t)(int, const NM_REAL *, void *);
+typedef NM_REAL (*nm_multivar_real_func_t_4A)(int, const NM_REAL *, void *);
 
 // Parmeters:
 // - tol_x: Terminate if any dimension of the simplex is smaller.
@@ -67,14 +72,14 @@ typedef struct
     int max_iterations;
     int restarts;
     int debug_log;
-} nm_params_t;
+} nm_params_t_4A;
 
 typedef struct
 {
     int tol_satisfied;
     int iterations;
     NM_REAL min_fx;
-} nm_result_t;
+} nm_result_t_4A;
 
 // CONVENIENCE API
 //-----------------------------------------------------------------------------
@@ -90,13 +95,13 @@ typedef struct
 // - params: tolerance and iteration control.
 // - out: the point which minimizes function (array of n values)
 //
-nm_result_t nm_multivar_optimize(
+nm_result_t_4A nm_multivar_optimize_4A(
     int dimension,
     const NM_REAL *initial,
     const NM_REAL *initial_search_size,
-    nm_multivar_real_func_t func,
+    nm_multivar_real_func_t_4A func,
     void *args,
-    const nm_params_t *params,
+    const nm_params_t_4A *params,
     NM_REAL *out);
 
 //-----------------------------------------------------------------------------
@@ -111,22 +116,22 @@ typedef struct
 {
     NM_REAL *x;
     NM_REAL fx;
-} nm_simplex_pt_t;
+} nm_simplex_pt_t_4A;
 
 // An n-dimensional simplex with n+1 simplex points.
 typedef struct
 {
     int dimension;
-    nm_simplex_pt_t *p;
+    nm_simplex_pt_t_4A *p;
     NM_REAL *p_buffer;
     NM_REAL *temp_buffer;
-} nm_simplex_t;
+} nm_simplex_t_4A;
 
-void nm_simplex_init(nm_simplex_t *simplex, int dimension);
-void nm_simplex_shutdown(nm_simplex_t *simplex);
+void nm_simplex_init_4A(nm_simplex_t_4A *simplex, int dimension);
+void nm_simplex_shutdown_4A(nm_simplex_t_4A *simplex);
 
 // Guess the simplex size in each dimension using only the initial value.
-void nm_guess_simplex_size(int n, const NM_REAL *initial, NM_REAL *out_size);
+void nm_guess_simplex_size_4A(int n, const NM_REAL *initial, NM_REAL *out_size);
 
 // Place the simplex in a standard position around the initial point.
 // This is roughly offseting the intiial point by each vector in the standard basis.
@@ -137,15 +142,15 @@ void nm_guess_simplex_size(int n, const NM_REAL *initial, NM_REAL *out_size);
    0---
  */
 
-void nm_simplex_position_around(nm_simplex_t *simplex, const NM_REAL *initial, const NM_REAL *size);
+void nm_simplex_position_around_4A(nm_simplex_t_4A *simplex, const NM_REAL *initial, const NM_REAL *size);
 
-int nm_simplex_iterate(
-    nm_simplex_t *simplex,
-    nm_multivar_real_func_t func,
+int nm_simplex_iterate_4A(
+    nm_simplex_t_4A *simplex,
+    nm_multivar_real_func_t_4A func,
     void *args,
-    const nm_params_t *params);
+    const nm_params_t_4A *params);
 
-void nm_params_init_default(nm_params_t *params, int dimension);
+void nm_params_init_default_4A(nm_params_t_4A *params, int dimension);
 
 /*
    Copyright 2017 Matteo Maggioni, 2022 Justin Meiners
@@ -157,4 +162,4 @@ void nm_params_init_default(nm_params_t *params, int dimension);
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#endif // __NELDER_MEAD_H__
+#endif // __NELDER_MEAD_4A_H__
