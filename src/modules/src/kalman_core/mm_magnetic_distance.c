@@ -16,7 +16,7 @@
 #include "nelder_mead_4A.h"
 #include "nelder_mead_3A.h"
 
-float Optimization_Model_STD = 0.05f;
+float Optimization_Model_STD = 0.06f;
 
 // #define start_timer() *((volatile uint32_t *)0xE0001000) = 0x40000001 // Enable CYCCNT register
 // #define stop_timer() *((volatile uint32_t *)0xE0001000) = 0x40000000  // Disable CYCCNT register
@@ -66,7 +66,7 @@ float CalibrationRapport_anchor3 = 1.0f;
 float CalibrationRapport_anchor4 = 1.0f;
 
 // ----------------- Calibration -----------------
-volatile uint32_t currentCalibrationTick = 0;
+uint32_t currentCalibrationTick = 0;
 float calibrationMean[4] = {};
 
 // adaptive std on Measured volts
@@ -87,14 +87,17 @@ static float B_field_vector_3[3];
 static float B_field_vector_4[3];
 
 static bool isInitialized = false;
-static bool isFirstMeasurement = true;
+bool isFirstMeasurement = true;
 
-static float estimated_position[3];
+// ----------------- Outlier -----------------
+static float euclidean_distance_xy = 0.0f;
+static float euclidean_distance_z = 0.0f;
+// static int outlierCounter = 0;
 
-static int counter = 0;
+static int8_t idSaturations[4] = {0, 0, 0, 0};
 
 // Set the range where to look for the minumum
-static float range[3] = {-0.2f, +0.2f, 0.2f};
+static float range[3] = {-0.3f, +0.3f, 0.3f};
 static float solution[3];
 static nm_params_t_3A paramsNM_3A;
 static nm_params_t_4A paramsNM_4A;
@@ -106,6 +109,8 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
     if (!isInitialized)
     {
+
+        DEBUG_PRINT("Initializing the optimization model\n");
         // initialize the random seed
         srand(time(NULL));
         isInitialized = true;
@@ -114,14 +119,14 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
         nm_params_init_default_3A(&paramsNM_3A, 3);
         paramsNM_3A.debug_log = 0;
-        paramsNM_3A.max_iterations = 15;
+        paramsNM_3A.max_iterations = 18;
         paramsNM_3A.tol_fx = 1e-6f;
         paramsNM_3A.tol_x = 1e-5f;
         paramsNM_3A.restarts = 0;
 
         nm_params_init_default_4A(&paramsNM_4A, 3);
         paramsNM_4A.debug_log = 0;
-        paramsNM_4A.max_iterations = 15;
+        paramsNM_4A.max_iterations = 18;
         paramsNM_4A.tol_fx = 1e-6f;
         paramsNM_4A.tol_x = 1e-5f;
         paramsNM_4A.restarts = 0;
@@ -200,15 +205,23 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
             if (currentCalibrationTick == CALIBRATION_TIC_VALUE + 1)
             {
-                DEBUG_PRINT("currentCalibrationTick = %f\n", currentCalibrationTick);
+                DEBUG_PRINT("currentCalibrationTick = %f\n", (double)currentCalibrationTick);
 
-                DEBUG_PRINT("Resetting the Kalman filte after calibrationr\n");
                 paramSetInt(paramGetVarId("kalman", "resetEstimation"), 1);
+                vTaskDelay(M2T(10));
                 currentCalibrationTick = currentCalibrationTick + 1;
+                DEBUG_PRINT("Resetting the Kalman filter after calibrationr\n");
                 paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
+                vTaskDelay(M2T(10));
 
                 // paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
             }
+
+            // ------------------------------ debug ------------------------------
+            idSaturations[0] = voltAnchor->Id_in_saturation[0];
+            idSaturations[1] = voltAnchor->Id_in_saturation[1];
+            idSaturations[2] = voltAnchor->Id_in_saturation[2];
+            idSaturations[3] = voltAnchor->Id_in_saturation[3];
 
             // ------------------------------------ RUNNING CASE ------------------------------------
 
@@ -226,50 +239,69 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
             // initialize the params for the optimization algorithm
             // float my_params_start_cost_all = usecTimestamp();
             float x_start[3] = {};
+
             if (isFirstMeasurement)
             {
-                x_start[0] = this->S[KC_STATE_X];
-                x_start[1] = this->S[KC_STATE_Y];
-                x_start[2] = this->S[KC_STATE_Z];
+                DEBUG_PRINT("First measurement\n");
+                x_start[0] = 0.0f;
+                x_start[1] = 0.0f;
+                x_start[2] = 0.0f;
                 isFirstMeasurement = false;
             }
             else
             {
-                // TODO: forse qui si puo fare di meglio che usare la stima precedente.
-                // Si potrebbe ad esempio controllare se la stima precedente è un outlier e nel caso scartarla e usare lo stato de kalman come stima iniziale,
-                // o una predizione basata su qualche modello lineare di n stime precedenti
-                // QUESTI CONTROLLI VANNO FATTI PRIMA DI FARE UN UPDATE DEL KALMAN
-                x_start[0] = estimated_position[0];
-                x_start[1] = estimated_position[1];
-                x_start[2] = estimated_position[2];
+                x_start[0] = this->S[KC_STATE_X];
+                x_start[1] = this->S[KC_STATE_Y];
+                x_start[2] = this->S[KC_STATE_Z];
             }
 
-            if (voltAnchor->Id_in_saturation != 10)
+            if (voltAnchor->there_is_saturation)
             {
+
                 myParams_t_3A my_params;
-                for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
+                for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS - 1; anchorIdx++)
                 {
-                    my_params.Anchors_3A[anchorIdx][0] = voltAnchor->x[anchorIdx];
-                    my_params.Anchors_3A[anchorIdx][1] = voltAnchor->y[anchorIdx];
-                    my_params.Anchors_3A[anchorIdx][2] = voltAnchor->z[anchorIdx];
+                    // check if the anchor is not in saturation
+                    // NOTE: ASSUMING MAX 1 ANCHOR IN SATURATION AT A TIME
+                    if (voltAnchor->Id_in_saturation[anchorIdx] == 0)
+                    {
+                        my_params.Anchors_3A[anchorIdx][0] = voltAnchor->x[anchorIdx];
+                        my_params.Anchors_3A[anchorIdx][1] = voltAnchor->y[anchorIdx];
+                        my_params.Anchors_3A[anchorIdx][2] = voltAnchor->z[anchorIdx];
 
-                    my_params.versore_orientamento_cf_3A[0] = tag_or_versor[0];
-                    my_params.versore_orientamento_cf_3A[1] = tag_or_versor[1];
-                    my_params.versore_orientamento_cf_3A[2] = tag_or_versor[2];
+                        my_params.versore_orientamento_cf_3A[0] = tag_or_versor[0];
+                        my_params.versore_orientamento_cf_3A[1] = tag_or_versor[1];
+                        my_params.versore_orientamento_cf_3A[2] = tag_or_versor[2];
 
-                    my_params.Gain_3A = voltAnchor->GainValue;
+                        my_params.Gain_3A = voltAnchor->GainValue;
 
-                    my_params.frequencies_3A[anchorIdx] = voltAnchor->resonanceFrequency[anchorIdx];
-                    // using the measured volts to fill the structure
-                    my_params.MeasuredVoltages_calibrated_3A[anchorIdx] = voltAnchor->measuredVolt[anchorIdx] / calibrationsGains[anchorIdx];
-                    MeasuredVoltages_calibrated[anchorIdx] = my_params.MeasuredVoltages_calibrated_3A[anchorIdx];
+                        my_params.frequencies_3A[anchorIdx] = voltAnchor->resonanceFrequency[anchorIdx];
+                        // using the measured volts to fill the structure
+                        my_params.MeasuredVoltages_calibrated_3A[anchorIdx] = voltAnchor->measuredVolt[anchorIdx] / calibrationsGains[anchorIdx];
+                        MeasuredVoltages_calibrated[anchorIdx] = my_params.MeasuredVoltages_calibrated_3A[anchorIdx];
+                    }
+
+                    // my_params.Anchors_3A[anchorIdx][0] = voltAnchor->x[anchorIdx];
+                    // my_params.Anchors_3A[anchorIdx][1] = voltAnchor->y[anchorIdx];
+                    // my_params.Anchors_3A[anchorIdx][2] = voltAnchor->z[anchorIdx];
+
+                    // my_params.versore_orientamento_cf_3A[0] = tag_or_versor[0];
+                    // my_params.versore_orientamento_cf_3A[1] = tag_or_versor[1];
+                    // my_params.versore_orientamento_cf_3A[2] = tag_or_versor[2];
+
+                    // my_params.Gain_3A = voltAnchor->GainValue;
+
+                    // my_params.frequencies_3A[anchorIdx] = voltAnchor->resonanceFrequency[anchorIdx];
+                    // // using the measured volts to fill the structure
+                    // my_params.MeasuredVoltages_calibrated_3A[anchorIdx] = voltAnchor->measuredVolt[anchorIdx] / calibrationsGains[anchorIdx];
+                    // MeasuredVoltages_calibrated[anchorIdx] = my_params.MeasuredVoltages_calibrated_3A[anchorIdx];
                 }
                 // float my_params_ms = (float)(usecTimestamp() - my_params_start_cost_all) / 1000.0f;
 
                 // set the starting point for the optimization algorithm
 
                 // float optimize_start_cost_all = usecTimestamp();
-                nm_result_t_3A result = nm_multivar_optimize_3A(3, x_start, range, &myCostFunction_3A, &my_params, &paramsNM_3A, solution);
+                nm_multivar_optimize_3A(3, x_start, range, &myCostFunction_3A, &my_params, &paramsNM_3A, solution);
                 // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
             }
             else
@@ -297,33 +329,52 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
                 // set the starting point for the optimization algorithm
 
                 // float optimize_start_cost_all = usecTimestamp();
-                nm_result_t_4A result = nm_multivar_optimize_4A(3, x_start, range, &myCostFunction_4A, &my_params, &paramsNM_4A, solution);
+                nm_multivar_optimize_4A(3, x_start, range, &myCostFunction_4A, &my_params, &paramsNM_4A, solution);
                 // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
             }
 
             /// ------------------------- optimization  for computing position -------------------------
 
-            float h_x[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_x = {1, KC_STATE_DIM, h_x};
-            h_x[KC_STATE_X] = 1;
+            // Otulier Detection, computing the euclidean distance between the estimated position by EKF and the solution
+            // xy
+            euclidean_distance_xy = euclidean_distance(this->S, solution, 2);
+            // compute the disstance between the estimated z and the solution z
+            euclidean_distance_z = fabsf(this->S[KC_STATE_Z] - solution[2]);
 
-            float h_y[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_y = {1, KC_STATE_DIM, h_y};
-            h_y[KC_STATE_Y] = 1;
+            if (!(euclidean_distance_xy >= 0.5f))
+            {
+                euclidean_distance_xy = 0.0f;
 
-            float h_z[KC_STATE_DIM] = {0};
-            arm_matrix_instance_f32 H_z = {1, KC_STATE_DIM, h_z};
-            h_z[KC_STATE_Z] = 1;
+                float h_x[KC_STATE_DIM] = {0};
+                arm_matrix_instance_f32 H_x = {1, KC_STATE_DIM, h_x};
+                h_x[KC_STATE_X] = 1;
+
+                float h_y[KC_STATE_DIM] = {0};
+                arm_matrix_instance_f32 H_y = {1, KC_STATE_DIM, h_y};
+                h_y[KC_STATE_Y] = 1;
+
+                // float EKF_UPDATE_start_cost_all = usecTimestamp();
+                kalmanCoreScalarUpdate(this, &H_x, solution[0] - this->S[KC_STATE_X], Optimization_Model_STD);
+                kalmanCoreScalarUpdate(this, &H_y, solution[1] - this->S[KC_STATE_Y], Optimization_Model_STD);
+                if (euclidean_distance_z <= 0.5f)
+                {
+                    float h_z[KC_STATE_DIM] = {0};
+                    arm_matrix_instance_f32 H_z = {1, KC_STATE_DIM, h_z};
+                    h_z[KC_STATE_Z] = 1;
+                    kalmanCoreScalarUpdate(this, &H_z, solution[2] - this->S[KC_STATE_Z], Optimization_Model_STD);
+                }
+                else
+                {
+                    euclidean_distance_z = 0.0f;
+                }
+                // kalmanCoreScalarUpdate(this, &H_z, solution[2] - this->S[KC_STATE_Z], Optimization_Model_STD + 0.05f);
+            }
 
             // float EKF_UPDATE_start_cost_all = usecTimestamp();
-            kalmanCoreScalarUpdate(this, &H_x, solution[0] - this->S[KC_STATE_X], Optimization_Model_STD);
-            kalmanCoreScalarUpdate(this, &H_y, solution[1] - this->S[KC_STATE_Y], Optimization_Model_STD);
-            kalmanCoreScalarUpdate(this, &H_z, solution[2] - this->S[KC_STATE_Z], Optimization_Model_STD);
-            // float EKF_UPDATE_ms = (float)(usecTimestamp() - EKF_UPDATE_start_cost_all) / 1000.0f;
 
+            // float EKF_UPDATE_ms = (float)(usecTimestamp() - EKF_UPDATE_start_cost_all) / 1000.0f;
             // float ALL_ms = (float)(usecTimestamp() - all_start) / 1000.0f;
             // DEBUG_PRINT("ALL_ms = %f\n", (double)ALL_ms);
-
             // float a = 0;
             // DEBUG_PRINT("Estimated position x: %f,\n", (double)estimated_position[0]);
         }
@@ -334,6 +385,14 @@ LOG_GROUP_START(Optimization_Model)
 LOG_ADD(LOG_FLOAT, T_x, &solution[0])
 LOG_ADD(LOG_FLOAT, T_y, &solution[1])
 LOG_ADD(LOG_FLOAT, T_z, &solution[2])
+
+LOG_ADD(LOG_FLOAT, Out_d, &euclidean_distance_xy)
+LOG_ADD(LOG_FLOAT, Out_z, &euclidean_distance_z)
+
+// LOG_ADD(LOG_UINT8, Nero_sat, &idSaturations[0])
+// LOG_ADD(LOG_UINT8, Gial_sat, &idSaturations[1])
+// LOG_ADD(LOG_UINT8, Grig_sat, &idSaturations[2])
+// LOG_ADD(LOG_UINT8, Ros_sat, &idSaturations[3])
 
 // LOG_ADD(LOG_FLOAT, Inpt_x, &InputPoint[0])
 // LOG_ADD(LOG_FLOAT, Inpt_y, &InputPoint[1])
@@ -371,6 +430,8 @@ LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages_calibrated[3])
 
 LOG_GROUP_STOP(Dipole_Model)
 
-// PARAM_GROUP_START(Dipole_Params)
-// PARAM_ADD(PARAM_UINT16, calibTic, &currentCalibrationTick)
-// PARAM_GROUP_STOP(Dipole_Params)
+PARAM_GROUP_START(Dipole_Params)
+PARAM_ADD(PARAM_UINT32, calibTic, &currentCalibrationTick)
+PARAM_ADD(PARAM_FLOAT, STD_nelder, &Optimization_Model_STD)
+
+PARAM_GROUP_STOP(Dipole_Params)

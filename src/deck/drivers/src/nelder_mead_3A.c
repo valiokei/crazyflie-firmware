@@ -4,7 +4,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "usec_time.h"
-
+#include <stdlib.h>
 static nm_simplex_pt_t_3A my_p[DIMENSION + 1];
 static NM_REAL my_p_buffer[(DIMENSION + 1) * DIMENSION];
 static NM_REAL my_temp_buffer[TEMP_POINT_COUNT_ * DIMENSION];

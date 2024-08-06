@@ -55,7 +55,7 @@ static float TotalGain = 0;
 float MagneticStandardDeviation = Default_MagneticStandardDeviation;
 
 // -------  Debug variables -------
-static int counterSaturation = 0;
+// static int counterSaturation = 0;
 
 float NeroAmpl = 0;
 float GialloAmpl = 0;
@@ -63,7 +63,7 @@ float GrigioAmpl = 0;
 float RossoAmpl = 0;
 
 // FFT
-static uint16_t bin_size = BIN_SIZE;
+// static uint16_t bin_size = BIN_SIZE;
 // static uint16_t fft_size = FFT_SIZE;
 // static uint16_t Nero_Idx = NeroIdx;
 // static uint16_t Giallo_Idx = GialloIdx;
@@ -857,7 +857,7 @@ const float myCostFunction_3A(int n, const float *x, void *arg)
     // float startingx[3] = {x[0], x[1], x[2]};
     float B_field_vector_Optim[3];
 
-    for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
+    for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS - 1; anchorIdx++)
     {
 
         get_B_field_for_a_Anchor(params->Anchors_3A[anchorIdx], x, params->versore_orientamento_cf_3A, B_field_vector_Optim);
@@ -944,9 +944,10 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     }
 
     // fin the maximum of the Output_buffer_pointer
-    float maxSat;
-    uint32_t maxIndexSat;
-    arm_max_f32(Output_buffer_pointer, FFT_SIZE, &maxSat, &maxIndexSat);
+    // float maxSat;
+    // uint32_t maxIndexSat;
+    // arm_max_f32(Output_buffer_pointer + 1, FFT_SIZE - 1, &maxSat, &maxIndexSat);
+    // maxIndexSat += 1;
 
     // apply flattop window
     arm_mult_f32(Output_buffer_pointer, (float32_t *)flattop_2048_lut, Output_buffer_pointer, FFT_SIZE);
@@ -1081,8 +1082,6 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
 
     voltMeasurement_t volt;
 
-    volt.Id_in_saturation = 10;
-
     volt.x[0] = Nero_Position_x;
     volt.y[0] = Nero_Position_y;
     volt.z[0] = Nero_Position_z;
@@ -1123,75 +1122,108 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     // TODO: 2.4 Voltages max voltages before saturation, so if you see 2.4V in the output, then change the gain. Also viceversa, to be tested the mimumum value
 
     // ---------------------- SATURATION CASE -------------------------------------
+    volt.there_is_saturation = false;
+    volt.Id_in_saturation[0] = 0;
+    volt.Id_in_saturation[1] = 0;
+    volt.Id_in_saturation[2] = 0;
+    volt.Id_in_saturation[3] = 0;
 
-    int isSaturated = 0;
-    // check if the max is saturating
-    if (maxSat >= 2.5f)
+    if (NeroAmpl >= SATURATION_TRESHOLD)
     {
-        // if the max is saturating, then skip this measurement
-
-        // if the max is saturating, then skip this measurement
-        if (counterSaturation % 10 == 0)
-        {
-            // DEBUG_PRINT("Saturating\n");
-        }
-        counterSaturation++;
-
-        // finde the ancor more close to the max by looking at the max fft value
-        // Find the maximum value among NeroAmpl, GialloAmpl, GrigioAmpl, RossoAmpl
-
-        float maxAmpl = NeroAmpl;
-        int maxAnchorId = Nero_Id;
-        if (GialloAmpl > maxAmpl)
-        {
-            maxAmpl = GialloAmpl;
-            maxAnchorId = Giallo_Id;
-        }
-        if (GrigioAmpl > maxAmpl)
-        {
-            maxAmpl = GrigioAmpl;
-            maxAnchorId = Grigio_Id;
-        }
-        if (RossoAmpl > maxAmpl)
-        {
-            maxAmpl = RossoAmpl;
-            maxAnchorId = Rosso_Id;
-        }
-
-        char *anchorName;
-        switch (maxAnchorId)
-        {
-        case Nero_Id:
-            anchorName = "Nero";
-            break;
-        case Giallo_Id:
-            anchorName = "Giallo";
-            break;
-        case Grigio_Id:
-            anchorName = "Grigio";
-            break;
-        case Rosso_Id:
-            anchorName = "Rosso";
-            break;
-        default:
-            anchorName = "Unknown";
-            break;
-        }
-        // DEBUG_PRINT("Max Anchor Name: %s\n", anchorName);
-        // Incresing the std for that measurement
-
-        // volt.stdDev[maxAnchorId] = MagneticStandardDeviation * 2;
-
-        volt.Id_in_saturation = maxAnchorId;
-        isSaturated = 1;
-
-        // DEBUG_PRINT("STD increased for %s *2\n", anchorName);
+        volt.Id_in_saturation[0] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        volt.there_is_saturation = true;
+    }
+    if (GialloAmpl >= SATURATION_TRESHOLD)
+    {
+        volt.Id_in_saturation[1] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        volt.there_is_saturation = true;
+    }
+    if (GrigioAmpl >= SATURATION_TRESHOLD)
+    {
+        volt.Id_in_saturation[2] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        volt.there_is_saturation = true;
+    }
+    if (RossoAmpl >= SATURATION_TRESHOLD)
+    {
+        volt.Id_in_saturation[3] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        volt.there_is_saturation = true;
     }
 
-    if (isSaturated == 0)
-    {
-        estimatorEnqueueVolt(&volt);
-    }
+    // // check if the max is saturating
+    // if (maxSat >= 1.2f)
+    // {
+    //     // if the max is saturating, then skip this measurement
+
+    //     // if the max is saturating, then skip this measurement
+    //     if (counterSaturation % 10 == 0)
+    //     {
+    //         DEBUG_PRINT("Saturating\n");
+    //         // DEBUG_PRINT("Max Value: %f\n", (double)maxSat);
+    //         // DEBUG_PRINT("Max Index: %d\n", (int)maxIndexSat);
+    //     }
+    //     counterSaturation++;
+
+    //     // finde the ancor more close to the max by looking at the max fft value
+    //     // Find the maximum value among NeroAmpl, GialloAmpl, GrigioAmpl, RossoAmpl
+
+    //     float maxAmpl = NeroAmpl;
+    //     int maxAnchorId = Nero_Id;
+    //     if (GialloAmpl > maxAmpl)
+    //     {
+    //         maxAmpl = GialloAmpl;
+    //         maxAnchorId = Giallo_Id;
+    //     }
+    //     if (GrigioAmpl > maxAmpl)
+    //     {
+    //         maxAmpl = GrigioAmpl;
+    //         maxAnchorId = Grigio_Id;
+    //     }
+    //     if (RossoAmpl > maxAmpl)
+    //     {
+    //         maxAmpl = RossoAmpl;
+    //         maxAnchorId = Rosso_Id;
+    //     }
+
+    //     char *anchorName;
+    //     switch (maxAnchorId)
+    //     {
+    //     case Nero_Id:
+    //         anchorName = "Nero";
+    //         break;
+    //     case Giallo_Id:
+    //         anchorName = "Giallo";
+    //         break;
+    //     case Grigio_Id:
+    //         anchorName = "Grigio";
+    //         break;
+    //     case Rosso_Id:
+    //         anchorName = "Rosso";
+    //         break;
+    //     default:
+    //         anchorName = "Unknown";
+    //         break;
+    //     }
+    //     // DEBUG_PRINT("Max Anchor Name: %s\n", anchorName);
+    //     // Incresing the std for that measurement
+
+    //     // volt.stdDev[maxAnchorId] = MagneticStandardDeviation * 2;
+
+    //     volt.Id_in_saturation = maxAnchorId;
+    //     isSaturated = 1;
+
+    //     // DEBUG_PRINT("STD increased for %s *2\n", anchorName);
+    // }
+    estimatorEnqueueVolt(&volt);
+
+    // if (isSaturated == 0)
+    // {
+    //     estimatorEnqueueVolt(&volt);
+    //     // float b = 0;
+    // }
 }
 
 static void mytask(void *param)
@@ -1252,7 +1284,7 @@ static void mytask(void *param)
 
     while (1)
     {
-        uint64_t start_cost = usecTimestamp();
+        // uint64_t start_cost = usecTimestamp();
 
         if (GainValue > 0)
         {
@@ -1346,7 +1378,7 @@ static void mytask(void *param)
         }
 
         // Defining the delay between the executions
-        float diff_in_ms = (float)(usecTimestamp() - start_cost) / 1000.0f;
+        // float diff_in_ms = (float)(usecTimestamp() - start_cost) / 1000.0f;
 
         vTaskDelay(M2T(SYSTEM_PERIOD_MS));
     }

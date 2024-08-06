@@ -32,20 +32,21 @@
 // -------------------------- FFT -------------------------------------------
 #define FFT_SIZE ARRAY_SIZE
 #define BIN_SIZE (int)(Fc_ADC / FFT_SIZE)
+#define SATURATION_TRESHOLD 1.2f
 
 // ------------------------ Measurement Model Params -------------------------------------------
 #define Default_MagneticStandardDeviation 0.0001f
-#define G_INA 700.0f
+#define G_INA 1000.0f
 
 // -------------------------  adaptive std on Measured Voltage -------------------------------
 #define UseAdaptiveSTD 0
 #define window_size 25
 
 // ------------------------ Calibration -------------------------------------------
-#define CALIBRATION_TIC_VALUE 150.0f // Number of measurements to perform the calibration
+#define CALIBRATION_TIC_VALUE 500.0f // Number of measurements to perform the calibration
 
 // ------------------------System HZ-------------------------------------------
-#define SYSTEM_HZ 50
+#define SYSTEM_HZ 30
 #define SYSTEM_PERIOD_MS (1000 / SYSTEM_HZ)
 
 // ------------------------ Anchors Parameters -------------------------------------------
@@ -58,7 +59,7 @@
 #define Nero_Q -2.635
 #define Nero_Position_x 0.48f
 #define Nero_Position_y 0.48f
-#define Nero_Position_z +0.35f
+#define Nero_Position_z +0.30f
 #define Nero_Id 0
 
 #define GialloResFreq 203e3
@@ -67,7 +68,7 @@
 #define Giallo_Q -2.629
 #define Giallo_Position_x +0.48f
 #define Giallo_Position_y -0.48f
-#define Giallo_Position_z +0.35f
+#define Giallo_Position_z +0.30f
 #define Giallo_Id 1
 
 #define GrigioResFreq 193e3
@@ -76,7 +77,7 @@
 #define Grigio_Q -2.647
 #define Grigio_Position_x -0.48f
 #define Grigio_Position_y -0.48f
-#define Grigio_Position_z +0.35f
+#define Grigio_Position_z +0.30f
 #define Grigio_Id 2
 
 #define RossoResFreq 183e3
@@ -85,7 +86,7 @@
 #define Rosso_Q -2.640
 #define Rosso_Position_x -0.48f
 #define Rosso_Position_y +0.48f
-#define Rosso_Position_z +0.35f
+#define Rosso_Position_z +0.30f
 #define Rosso_Id 3
 
 // ------------------------ PHYSICAL COIL -------------------------------------------

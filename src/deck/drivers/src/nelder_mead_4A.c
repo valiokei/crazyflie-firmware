@@ -1,5 +1,5 @@
 #include "nelder_mead_4A.h"
-
+#include <stdlib.h>
 #include <math.h>
 #include "FreeRTOS.h"
 #include "task.h"
