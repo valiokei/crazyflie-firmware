@@ -1,0 +1,210 @@
+#include "usec_time.h"
+#include <time.h>
+#include "arm_math.h" // Libreria CMSIS-DSP per operazioni con matrici
+#include "MagneticDeck.h"
+#include "debug.h"
+
+float diff_in_ms = 0;
+void add_regularization(float *matrix, int dim)
+{
+    for (int i = 0; i < dim; i++)
+    {
+        matrix[i * dim + 1] += EPSILON;
+    }
+}
+
+// Matrici del Filtro di Kalman
+float32_t F_data[STATE_DIM * STATE_DIM] = {
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1};
+
+float32_t H_data[MEASURE_DIM * STATE_DIM] = {
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1};
+
+float32_t Q_data[STATE_DIM * STATE_DIM] = {
+    q_kf_default, 0, 0,
+    0, q_kf_default, 0,
+    0, 0, q_kf_default};
+
+float32_t R_data[MEASURE_DIM * MEASURE_DIM] = {
+    sigma_x_kf_default * sigma_x_kf_default, 0, 0,
+    0, sigma_x_kf_default *sigma_x_kf_default, 0,
+    0, 0, sigma_x_kf_default *sigma_x_kf_default};
+
+float32_t P_data[STATE_DIM * STATE_DIM] = {
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1};
+
+float32_t x_data[STATE_DIM] = {0};   // Stato iniziale
+float32_t z_data[MEASURE_DIM] = {0}; // Vettore di misura
+
+// Oggetti matrice CMSIS-DSP
+arm_matrix_instance_f32 F, H, Q, R, P, x, z, K;
+
+// Funzione di inizializzazione
+void kalman_init(const float32_t *initial_state)
+{
+    arm_mat_init_f32(&F, STATE_DIM, STATE_DIM, F_data);
+    arm_mat_init_f32(&H, MEASURE_DIM, STATE_DIM, H_data);
+    arm_mat_init_f32(&Q, STATE_DIM, STATE_DIM, Q_data);
+    arm_mat_init_f32(&R, MEASURE_DIM, MEASURE_DIM, R_data);
+    arm_mat_init_f32(&P, STATE_DIM, STATE_DIM, P_data);
+
+    for (int i = 0; i < STATE_DIM; i++)
+    {
+        // the measurements coincide with the initial state in the beginning
+        x_data[i] = initial_state[i];
+        z_data[i] = initial_state[i];
+    }
+    arm_mat_init_f32(&x, STATE_DIM, 1, x_data);
+    arm_mat_init_f32(&z, MEASURE_DIM, 1, z_data);
+}
+
+// Funzione per aggiornare le misure
+void kalman_update_measurements(const float32_t *new_measurements)
+{
+    for (int i = 0; i < MEASURE_DIM; i++)
+    {
+        z_data[i] = new_measurements[i];
+    }
+    // arm_mat_init_f32(&z, MEASURE_DIM, 1, z_data);
+}
+
+// Funzione di predizione
+void kalman_predict()
+{
+
+    arm_matrix_instance_f32 FT, temp1, temp2;
+    float32_t FT_data[STATE_DIM * STATE_DIM];
+    float32_t temp1_data[STATE_DIM * STATE_DIM];
+    float32_t temp2_data[STATE_DIM * STATE_DIM];
+    arm_mat_init_f32(&FT, STATE_DIM, STATE_DIM, FT_data);
+    arm_mat_init_f32(&temp1, STATE_DIM, STATE_DIM, temp1_data);
+    arm_mat_init_f32(&temp2, STATE_DIM, STATE_DIM, temp2_data);
+
+    // x = F * x
+    if (arm_mat_mult_f32(&F, &x, &x) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&F, &x, &x)\n");
+    }
+
+    // P = F * P * F' + Q
+    if (arm_mat_trans_f32(&F, &FT) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_trans_f32(&F, &FT)\n");
+    }
+    if (arm_mat_mult_f32(&F, &P, &temp1) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&F, &P, &temp1)\n");
+    }
+    if (arm_mat_mult_f32(&temp1, &FT, &temp2) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&temp1, &FT, &temp2)\n");
+    }
+    if (arm_mat_add_f32(&temp2, &Q, &P) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_add_f32(&temp2, &Q, &P)\n");
+    }
+}
+
+// Funzione di aggiornamento
+void kalman_update()
+{
+    // y = z - H * x
+    arm_matrix_instance_f32 y, temp1, HT, S, S_inv, I;
+    float32_t y_data[MEASURE_DIM];
+    float32_t temp1_data[MEASURE_DIM * STATE_DIM];
+    float32_t HT_data[STATE_DIM * MEASURE_DIM];
+    float32_t S_data[MEASURE_DIM * MEASURE_DIM];
+    float32_t S_inv_data[MEASURE_DIM * MEASURE_DIM];
+    float32_t I_data[STATE_DIM * STATE_DIM] = {0};
+
+    arm_mat_init_f32(&y, MEASURE_DIM, 1, y_data);
+    arm_mat_init_f32(&temp1, MEASURE_DIM, STATE_DIM, temp1_data);
+    arm_mat_init_f32(&HT, STATE_DIM, MEASURE_DIM, HT_data);
+    arm_mat_init_f32(&S, MEASURE_DIM, MEASURE_DIM, S_data);
+    arm_mat_init_f32(&S_inv, MEASURE_DIM, MEASURE_DIM, S_inv_data);
+    arm_mat_init_f32(&I, STATE_DIM, STATE_DIM, I_data);
+
+    if (arm_mat_mult_f32(&H, &x, &y) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&H, &x, &y)\n");
+    }
+    if (arm_mat_sub_f32(&z, &y, &y) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_sub_f32(&z, &y, &y)\n");
+    }
+
+    // S = H * P * H' + R
+    if (arm_mat_trans_f32(&H, &HT) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_trans_f32(&H, &HT)\n");
+    }
+    if (arm_mat_mult_f32(&H, &P, &temp1) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&H, &P, &temp1)\n");
+    }
+    if (arm_mat_mult_f32(&temp1, &HT, &S) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&temp1, &HT, &S)\n");
+    }
+    if (arm_mat_add_f32(&S, &R, &S) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_add_f32(&S, &R, &S)\n");
+    }
+
+    // K = P * H' * S^-1
+    if (arm_mat_inverse_f32(&S, &S_inv) != ARM_MATH_SUCCESS)
+    {
+        // S is singular, add regularization and try again
+        add_regularization(S_data, MEASURE_DIM);
+        if (arm_mat_inverse_f32(&S, &S_inv) != ARM_MATH_SUCCESS)
+        {
+            DEBUG_PRINT("Errore durante l'operazione: arm_mat_inverse_f32(&S, &S_inv) dopo regolarizzazione\n");
+        }
+    }
+
+    float start_time = usecTimestamp();
+    if (arm_mat_mult_f32(&P, &HT, &temp1) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&P, &HT, &temp1)\n");
+    }
+    if (arm_mat_mult_f32(&temp1, &S_inv, &K) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&temp1, &S_inv, &K)\n");
+    }
+    diff_in_ms = (float)(usecTimestamp() - start_time) / 1000.0f;
+    DEBUG_PRINT("Matrix inversion time: %f ms\n", (double)diff_in_ms);
+
+    // x = x + K * y
+    if (arm_mat_mult_f32(&K, &y, &temp1) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&K, &y, &temp1)\n");
+    }
+    if (arm_mat_add_f32(&x, &temp1, &x) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_add_f32(&x, &temp1, &x)\n");
+    }
+
+    // P = (I - K * H) * P
+    for (int i = 0; i < STATE_DIM; i++)
+        I_data[i * STATE_DIM + i] = 1;
+    arm_mat_init_f32(&I, STATE_DIM, STATE_DIM, I_data);
+
+    if (arm_mat_mult_f32(&K, &H, &temp1) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&K, &H, &temp1)\n");
+    }
+    if (arm_mat_sub_f32(&I, &temp1, &temp1) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_sub_f32(&I, &temp1, &temp1)\n");
+    }
+    if (arm_mat_mult_f32(&temp1, &P, &P) != ARM_MATH_SUCCESS)
+    {
+        DEBUG_PRINT("Errore durante l'operazione: arm_mat_mult_f32(&temp1, &P, &P)\n");
+    }
+}

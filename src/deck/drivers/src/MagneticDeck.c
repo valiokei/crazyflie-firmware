@@ -1,5 +1,7 @@
 #define DEBUG_MODULE "MagneticDeck"
+#include "log.h"
 #include "debug.h"
+#include "param.h"
 #include "deck.h"
 #include "deck_analog.h"
 #include "stm32f4xx.h"
@@ -24,9 +26,28 @@
 #include "nelder_mead_3A.h"
 #include "nelder_mead_4A.h"
 #include "usec_time.h"
+#include <time.h>
+#include <stdlib.h>
+
+#include "nelder_mead_4A.h"
+#include "nelder_mead_3A.h"
+#include "estimator_kalman.h"
+#include "estimator.h"
+#include "stabilizer_types.h"
+#include "kalman_core.h"
+#include "LinearKalmanFilterRW.h"
 
 #define CONFIG_DEBUG = y
 static bool isInit = false;
+
+// Anchors
+const float AnchorPositionMatrix[4][3] = {
+    {Nero_Position_x, Nero_Position_y, Nero_Position_z},
+    {Giallo_Position_x, Giallo_Position_y, Giallo_Position_z},
+    {Grigio_Position_x, Grigio_Position_y, Grigio_Position_z},
+    {Rosso_Position_x, Rosso_Position_y, Rosso_Position_z}};
+
+const float ResonanceFreqs[4] = {NeroResFreq, GialloResFreq, GrigioResFreq, RossoResFreq};
 
 // adc INITIALIZATION
 // ADC flag to check if the conversion is done
@@ -54,8 +75,19 @@ static float TotalGain = 0;
 
 float MagneticStandardDeviation = Default_MagneticStandardDeviation;
 
+// -------------------------- NelderMead -------------------------------------------
+// Set the range where to look for the minumum
+static float range[3] = {-0.3f, +0.3f, 0.3f};
+static float solution[3];
+
+// --------------------------Linear Kalman Filter-------------------------------------------
+KalmanFilter kf;
+
 // -------  Debug variables -------
 // static int counterSaturation = 0;
+static int counter = 0;
+
+volatile float MeasuredVoltages_calibrated[4] = {0.0f, 0.0f, 0.0f, 0.0f};
 
 float NeroAmpl = 0;
 float GialloAmpl = 0;
@@ -73,7 +105,7 @@ float RossoAmpl = 0;
 float skipThisMeasurement = 0;
 
 // -------------------- DAC Functions -------------------------------
-uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage)
+uint16_t ValueforDAC_from_DesideredVolt(float desidered_Voltage)
 {
     // DAC7571
     // https://www.ti.com/lit/ds/symlink/dac7571.pdf?ts=1718008558964&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FDAC7571
@@ -925,13 +957,52 @@ const float myCostFunction_4A(int n, const float *x, void *arg)
 
 // -------------------- Cycling Function ----------------------------
 
-// fft and kalman update function
-void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor)
+// Identify the saturation anchors
+// Identify the saturation anchors
+void check_saturations(FFT_Amplitudes *amplitudes, int *Id_in_saturation, bool *there_is_saturation)
 {
-    if (skipThisMeasurement == 1)
+    // ---------------------- SATURATION CASE -------------------------------------
+    *there_is_saturation = false;
+    Id_in_saturation[0] = 0;
+    Id_in_saturation[1] = 0;
+    Id_in_saturation[2] = 0;
+    Id_in_saturation[3] = 0;
+
+    if (amplitudes->NeroAmpl >= SATURATION_TRESHOLD)
     {
-        return;
+        Id_in_saturation[0] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        *there_is_saturation = true;
     }
+    if (amplitudes->GialloAmpl >= SATURATION_TRESHOLD)
+    {
+        Id_in_saturation[1] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        *there_is_saturation = true;
+    }
+    if (amplitudes->GrigioAmpl >= SATURATION_TRESHOLD)
+    {
+        Id_in_saturation[2] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        *there_is_saturation = true;
+    }
+    if (amplitudes->RossoAmpl >= SATURATION_TRESHOLD)
+    {
+        Id_in_saturation[3] = 1;
+        // DEBUG_PRINT("Saturating\n");
+        *there_is_saturation = true;
+    }
+}
+
+// fft and kalman update function
+FFT_Amplitudes performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor)
+{
+    // if (skipThisMeasurement == 1)
+    // {
+    //     return;
+    // }
+    FFT_Amplitudes amps;
+
     arm_q31_to_float((q31_t *)Input_buffer_pointer, Output_buffer_pointer, FFT_SIZE);
     int p = 0;
     for (p = 0; p < FFT_SIZE; p++)
@@ -971,58 +1042,66 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
 
     // Extract the maximum value and its index around NeroIdx
     uint32_t maxindex;
-    arm_max_f32(&fft_magnitude[NeroIdx - 2], 4, &NeroAmpl, &maxindex);
+    arm_max_f32(&fft_magnitude[NeroIdx - 2], 4, &amps.NeroAmpl, &maxindex);
     // get the value before and the value after the maximum value
     float beforeNero = fft_magnitude[NeroIdx - 2];
     float afterNero = fft_magnitude[NeroIdx + 1];
     // define the points
-    Point_magnetic_fft NeroPoint = {NeroIdx, NeroAmpl};
+    Point_magnetic_fft NeroPoint = {NeroIdx, amps.NeroAmpl};
     Point_magnetic_fft beforeNeroPoint = {NeroIdx - 2, beforeNero};
     Point_magnetic_fft afterNeroPoint = {NeroIdx + 1, afterNero};
     // find the peach of the signal
     Point_magnetic_fft NeroMaxPoint;
     reconstructParabolaAndFindPeak(beforeNeroPoint, NeroPoint, afterNeroPoint, &NeroMaxPoint);
-    NeroAmpl = NeroMaxPoint.y * flattopCorrectionFactor * 2.0f;
+    amps.NeroAmpl = NeroMaxPoint.y * flattopCorrectionFactor * 2.0f;
 
     // Calculate the maximum value and its index around GialloIdx
-    arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &GialloAmpl, &maxindex);
+    arm_max_f32(&fft_magnitude[GialloIdx - 1], 3, &amps.GialloAmpl, &maxindex);
     // get the value before and the value after the maximum value
     float beforeGiallo = fft_magnitude[GialloIdx - 2];
     float afterGiallo = fft_magnitude[GialloIdx + 1];
     // define the points
-    Point_magnetic_fft GialloPoint = {GialloIdx, GialloAmpl};
+    Point_magnetic_fft GialloPoint = {GialloIdx, amps.GialloAmpl};
     Point_magnetic_fft beforeGialloPoint = {GialloIdx - 2, beforeGiallo};
     Point_magnetic_fft afterGialloPoint = {GialloIdx + 1, afterGiallo};
     // find the peach of the signal
     Point_magnetic_fft GialloMaxPoint;
     reconstructParabolaAndFindPeak(beforeGialloPoint, GialloPoint, afterGialloPoint, &GialloMaxPoint);
-    GialloAmpl = GialloMaxPoint.y * flattopCorrectionFactor * 2.0f;
+    amps.GialloAmpl = GialloMaxPoint.y * flattopCorrectionFactor * 2.0f;
 
     // Calculate the maximum value and its index around GrigioIdx
-    arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &GrigioAmpl, &maxindex);
+    arm_max_f32(&fft_magnitude[GrigioIdx - 1], 3, &amps.GrigioAmpl, &maxindex);
     float beforeGrigio = fft_magnitude[GrigioIdx - 2];
     float afterGrigio = fft_magnitude[GrigioIdx + 1];
     // define the points
-    Point_magnetic_fft GrigioPoint = {GrigioIdx, GrigioAmpl};
+    Point_magnetic_fft GrigioPoint = {GrigioIdx, amps.GrigioAmpl};
     Point_magnetic_fft beforeGrigioPoint = {GrigioIdx - 2, beforeGrigio};
     Point_magnetic_fft afterGrigioPoint = {GrigioIdx + 1, afterGrigio};
     // find the peach of the signal
     Point_magnetic_fft GrigioMaxPoint;
     reconstructParabolaAndFindPeak(beforeGrigioPoint, GrigioPoint, afterGrigioPoint, &GrigioMaxPoint);
-    GrigioAmpl = GrigioMaxPoint.y * flattopCorrectionFactor * 2.0f;
+    amps.GrigioAmpl = GrigioMaxPoint.y * flattopCorrectionFactor * 2.0f;
 
     // Calculate the maximum value and its index around RossoIdx
-    arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &RossoAmpl, &maxindex);
+    arm_max_f32(&fft_magnitude[RossoIdx - 1], 3, &amps.RossoAmpl, &maxindex);
     float beforeRosso = fft_magnitude[RossoIdx - 2];
     float afterRosso = fft_magnitude[RossoIdx + 1];
     // define the points
-    Point_magnetic_fft RossoPoint = {RossoIdx, RossoAmpl};
+    Point_magnetic_fft RossoPoint = {RossoIdx, amps.RossoAmpl};
     Point_magnetic_fft beforeRossoPoint = {RossoIdx - 2, beforeRosso};
     Point_magnetic_fft afterRossoPoint = {RossoIdx + 1, afterRosso};
     // find the peach of the signal
     Point_magnetic_fft RossoMaxPoint;
     reconstructParabolaAndFindPeak(beforeRossoPoint, RossoPoint, afterRossoPoint, &RossoMaxPoint);
-    RossoAmpl = RossoMaxPoint.y * flattopCorrectionFactor * 2.0f;
+    amps.RossoAmpl = RossoMaxPoint.y * flattopCorrectionFactor * 2.0f;
+
+    amps.AllAmpl[0] = amps.NeroAmpl;
+    amps.AllAmpl[1] = amps.GialloAmpl;
+    amps.AllAmpl[2] = amps.GrigioAmpl;
+    amps.AllAmpl[3] = amps.RossoAmpl;
+
+    // return the amplitudes
+    return amps;
 
     // --------------------------------- 2D MEASUREMENT MODEL - DISTANCE COMPUTATION ---------------------------------
     /*
@@ -1080,78 +1159,79 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
     // ---------------3D MEASUREMENT MODEL - POSITION COMPUTATION------------------------------
     // THIS MODEL IS USED TO UPDATE THE KALMAN FILTER
 
-    voltMeasurement_t volt;
+    // voltMeasurement_t volt;
 
-    volt.x[0] = Nero_Position_x;
-    volt.y[0] = Nero_Position_y;
-    volt.z[0] = Nero_Position_z;
-    volt.stdDev[0] = MagneticStandardDeviation;
-    volt.measuredVolt[0] = NeroAmpl;
-    volt.anchorId[0] = Nero_Id;
-    volt.resonanceFrequency[0] = NeroResFreq;
-    volt.GainValue = TotalGain;
+    // volt.x[0] = Nero_Position_x;
+    // volt.y[0] = Nero_Position_y;
+    // volt.z[0] = Nero_Position_z;
+    // volt.stdDev[0] = MagneticStandardDeviation;
+    // volt.measuredVolt[0] = NeroAmpl;
+    // volt.anchorId[0] = Nero_Id;
+    // volt.resonanceFrequency[0] = NeroResFreq;
+    // volt.GainValue = TotalGain;
 
-    volt.x[1] = Giallo_Position_x;
-    volt.y[1] = Giallo_Position_y;
-    volt.z[1] = Giallo_Position_z;
-    volt.stdDev[1] = MagneticStandardDeviation;
-    volt.measuredVolt[1] = GialloAmpl;
-    volt.anchorId[1] = Giallo_Id;
-    volt.resonanceFrequency[1] = GialloResFreq;
-    volt.GainValue = TotalGain;
+    // volt.x[1] = Giallo_Position_x;
+    // volt.y[1] = Giallo_Position_y;
+    // volt.z[1] = Giallo_Position_z;
+    // volt.stdDev[1] = MagneticStandardDeviation;
+    // volt.measuredVolt[1] = GialloAmpl;
+    // volt.anchorId[1] = Giallo_Id;
+    // volt.resonanceFrequency[1] = GialloResFreq;
+    // volt.GainValue = TotalGain;
 
-    volt.x[2] = Grigio_Position_x;
-    volt.y[2] = Grigio_Position_y;
-    volt.z[2] = Grigio_Position_z;
-    volt.stdDev[2] = MagneticStandardDeviation;
-    volt.measuredVolt[2] = GrigioAmpl;
-    volt.anchorId[2] = Grigio_Id;
-    volt.resonanceFrequency[2] = GrigioResFreq;
-    volt.GainValue = TotalGain;
+    // volt.x[2] = Grigio_Position_x;
+    // volt.y[2] = Grigio_Position_y;
+    // volt.z[2] = Grigio_Position_z;
+    // volt.stdDev[2] = MagneticStandardDeviation;
+    // volt.measuredVolt[2] = GrigioAmpl;
+    // volt.anchorId[2] = Grigio_Id;
+    // volt.resonanceFrequency[2] = GrigioResFreq;
+    // volt.GainValue = TotalGain;
 
-    volt.x[3] = Rosso_Position_x;
-    volt.y[3] = Rosso_Position_y;
-    volt.z[3] = Rosso_Position_z;
-    volt.stdDev[3] = MagneticStandardDeviation;
-    volt.measuredVolt[3] = RossoAmpl;
-    volt.anchorId[3] = Rosso_Id;
-    volt.resonanceFrequency[3] = RossoResFreq;
-    volt.GainValue = TotalGain;
+    // volt.x[3] = Rosso_Position_x;
+    // volt.y[3] = Rosso_Position_y;
+    // volt.z[3] = Rosso_Position_z;
+    // volt.stdDev[3] = MagneticStandardDeviation;
+    // volt.measuredVolt[3] = RossoAmpl;
+    // volt.anchorId[3] = Rosso_Id;
+    // volt.resonanceFrequency[3] = RossoResFreq;
+    // volt.GainValue = TotalGain;
 
     // check if the ADC is saturating
     // TODO: 2.4 Voltages max voltages before saturation, so if you see 2.4V in the output, then change the gain. Also viceversa, to be tested the mimumum value
 
     // ---------------------- SATURATION CASE -------------------------------------
-    volt.there_is_saturation = false;
-    volt.Id_in_saturation[0] = 0;
-    volt.Id_in_saturation[1] = 0;
-    volt.Id_in_saturation[2] = 0;
-    volt.Id_in_saturation[3] = 0;
 
-    if (NeroAmpl >= SATURATION_TRESHOLD)
-    {
-        volt.Id_in_saturation[0] = 1;
-        // DEBUG_PRINT("Saturating\n");
-        volt.there_is_saturation = true;
-    }
-    if (GialloAmpl >= SATURATION_TRESHOLD)
-    {
-        volt.Id_in_saturation[1] = 1;
-        // DEBUG_PRINT("Saturating\n");
-        volt.there_is_saturation = true;
-    }
-    if (GrigioAmpl >= SATURATION_TRESHOLD)
-    {
-        volt.Id_in_saturation[2] = 1;
-        // DEBUG_PRINT("Saturating\n");
-        volt.there_is_saturation = true;
-    }
-    if (RossoAmpl >= SATURATION_TRESHOLD)
-    {
-        volt.Id_in_saturation[3] = 1;
-        // DEBUG_PRINT("Saturating\n");
-        volt.there_is_saturation = true;
-    }
+    // volt.there_is_saturation = false;
+    // volt.Id_in_saturation[0] = 0;
+    // volt.Id_in_saturation[1] = 0;
+    // volt.Id_in_saturation[2] = 0;
+    // volt.Id_in_saturation[3] = 0;
+
+    // if (NeroAmpl >= SATURATION_TRESHOLD)
+    // {
+    //     volt.Id_in_saturation[0] = 1;
+    //     // DEBUG_PRINT("Saturating\n");
+    //     volt.there_is_saturation = true;
+    // }
+    // if (GialloAmpl >= SATURATION_TRESHOLD)
+    // {
+    //     volt.Id_in_saturation[1] = 1;
+    //     // DEBUG_PRINT("Saturating\n");
+    //     volt.there_is_saturation = true;
+    // }
+    // if (GrigioAmpl >= SATURATION_TRESHOLD)
+    // {
+    //     volt.Id_in_saturation[2] = 1;
+    //     // DEBUG_PRINT("Saturating\n");
+    //     volt.there_is_saturation = true;
+    // }
+    // if (RossoAmpl >= SATURATION_TRESHOLD)
+    // {
+    //     volt.Id_in_saturation[3] = 1;
+    //     // DEBUG_PRINT("Saturating\n");
+    //     volt.there_is_saturation = true;
+    // }
 
     // // check if the max is saturating
     // if (maxSat >= 1.2f)
@@ -1217,13 +1297,22 @@ void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer
 
     //     // DEBUG_PRINT("STD increased for %s *2\n", anchorName);
     // }
-    estimatorEnqueueVolt(&volt);
+    // estimatorEnqueueVolt(&volt);
 
     // if (isSaturated == 0)
     // {
     //     estimatorEnqueueVolt(&volt);
     //     // float b = 0;
     // }
+}
+
+// finalization of main cycle
+void finalizeCycle()
+{
+    DMA_Cmd(DMA_Stream, ENABLE);
+    ADC_DMA_start(ADC_n, ADC_Channel, 1, ADC_SampleTime_15Cycles);
+    skipThisMeasurement = 0;
+    ADC_Done = 0;
 }
 
 static void mytask(void *param)
@@ -1234,7 +1323,7 @@ static void mytask(void *param)
 
     // DAC Setup
     // SETTING the reference voltage for the DAC using i2c
-    uint16_t ValueforDAC = ValueforDAC_from_DesideredVol(V_REF_CRAZYFLIE / 2);
+    uint16_t ValueforDAC = ValueforDAC_from_DesideredVolt(V_REF_CRAZYFLIE / 2);
     uint8_t DAC_Write[2] = {0, 0};
     DAC_Write[1] = ValueforDAC & 0x00FF;
     DAC_Write[0] = (ValueforDAC >> 8) & 0x00FF;
@@ -1282,6 +1371,51 @@ static void mytask(void *param)
     float32_t flattopCorrectionFactor = ARRAY_SIZE / sum;
     DEBUG_PRINT("Flattop Correction Factor: %f\n", (double)flattopCorrectionFactor);
 
+    // ------------------ initialize the NM model params ------------------
+    srand(time(NULL));
+
+    static nm_params_t_3A paramsNM_3A;
+    static nm_params_t_4A paramsNM_4A;
+
+    nm_params_init_default_3A(&paramsNM_3A, 3);
+    paramsNM_3A.debug_log = 0;
+    paramsNM_3A.max_iterations = 18;
+    paramsNM_3A.tol_fx = 1e-6f;
+    paramsNM_3A.tol_x = 1e-5f;
+    paramsNM_3A.restarts = 0;
+
+    nm_params_init_default_4A(&paramsNM_4A, 3);
+    paramsNM_4A.debug_log = 0;
+    paramsNM_4A.max_iterations = 18;
+    paramsNM_4A.tol_fx = 1e-6f;
+    paramsNM_4A.tol_x = 1e-5f;
+    paramsNM_4A.restarts = 0;
+
+    bool isFirstMeasurement = true;
+
+    // ----------------- Outlier -----------------
+    static float euclidean_distance_xy = 0.0f;
+    // static float euclidean_distance_z = 0.0f;
+
+    // -----------------------  initialize the calibration params -----------------------
+    uint32_t currentCalibrationTick = 0;
+    float calibrationMean[4] = {};
+    float calibrationsGains[4];
+
+    // ----------------------- initialize the B field vectors -----------------------
+    static float B_field_vector_1[3];
+    static float B_field_vector_2[3];
+    static float B_field_vector_3[3];
+    static float B_field_vector_4[3];
+
+    // ----------------------- initialize the Linear kalman filter -----------------------
+
+    // initialize the kalman filter in 0,0,0
+
+    float32_t initial_state_kalman_filter[3] = {0.0f, 0.0f, 0.0f};
+
+    kalman_init(&kf, initial_state_kalman_filter);
+
     while (1)
     {
         // uint64_t start_cost = usecTimestamp();
@@ -1301,15 +1435,249 @@ static void mytask(void *param)
         }
         if (ADC_Done == 1 && GainValue == 0)
         {
-            // The DMA buffer is full, perform the FFT
+            if (skipThisMeasurement == 0)
+            {
+                // define the struct for the data to be processed
+                // voltMeasurement_t volt;
 
-            performFFT(DMA_Buffer, fft_input, flattopCorrectionFactor);
+                int Id_in_saturation[4];
+                bool there_is_saturation = false;
 
-            // The FFT is done, restart the ADC
-            DMA_Cmd(DMA_Stream, ENABLE);
-            ADC_DMA_start(ADC_n, ADC_Channel, 1, ADC_SampleTime_15Cycles);
-            skipThisMeasurement = 0;
-            ADC_Done = 0;
+                // The DMA buffer is full, perform the FFT
+                FFT_Amplitudes amplitudes = performFFT(DMA_Buffer, fft_input, flattopCorrectionFactor);
+
+                // check if the ADC is saturating and handle it
+                check_saturations(&amplitudes, Id_in_saturation, &there_is_saturation);
+
+                // Calibration
+
+                if (currentCalibrationTick < CALIBRATION_TIC_VALUE)
+                {
+                    calibrationMean[0] += amplitudes.NeroAmpl;
+                    calibrationMean[1] += amplitudes.GialloAmpl;
+                    calibrationMean[2] += amplitudes.GrigioAmpl;
+                    calibrationMean[3] += amplitudes.RossoAmpl;
+
+                    currentCalibrationTick = currentCalibrationTick + 1;
+                }
+                else
+                {
+                    if (currentCalibrationTick == CALIBRATION_TIC_VALUE)
+                    {
+                        // ------------------------------ CALIBRATION ------------------------------
+                        // For  calibration i fixed the tag position and orientation to 0,0,0 and 0,0,1
+                        currentCalibrationTick = currentCalibrationTick + 1;
+
+                        float meanData_a1 = calibrationMean[0] / CALIBRATION_TIC_VALUE;
+                        float meanData_a2 = calibrationMean[1] / CALIBRATION_TIC_VALUE;
+                        float meanData_a3 = calibrationMean[2] / CALIBRATION_TIC_VALUE;
+                        float meanData_a4 = calibrationMean[3] / CALIBRATION_TIC_VALUE;
+
+                        // DEBUG_PRINT("calibration data acquired!!\n");
+                        DEBUG_PRINT("calibration_Mean[0][0] = %f\n", (double)meanData_a1);
+                        DEBUG_PRINT("calibration_Mean[1][1] = %f\n", (double)meanData_a2);
+                        DEBUG_PRINT("calibration_Mean[2][2] = %f\n", (double)meanData_a3);
+                        DEBUG_PRINT("calibration_Mean[3][3] = %f\n", (double)meanData_a4);
+
+                        // point_t cfPosP;
+                        // estimatorKalmanGetEstimatedPos(&cfPosP);
+                        // float tag_pos_predicted_calibrated[3] = {cfPosP.x, cfPosP.y, cfPosP.z};
+                        float tag_pos_predicted_calibrated[3] = {0.0f, 0.0f, 0.0f};
+
+                        // float RotationMatrix[3][3];
+                        // estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
+                        // float tag_or_versor_calibrated[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
+                        float tag_or_versor_calibrated[3] = {0.0f, 0.0f, 1.0f};
+
+                        float anchor_1_pose[3] = {Nero_Position_x, Nero_Position_y, Nero_Position_z};
+                        float anchor_2_pose[3] = {Giallo_Position_x, Giallo_Position_y, Giallo_Position_z};
+                        float anchor_3_pose[3] = {Grigio_Position_x, Grigio_Position_y, Grigio_Position_z};
+                        float anchor_4_pose[3] = {Rosso_Position_x, Rosso_Position_y, Rosso_Position_z};
+                        get_B_field_for_a_Anchor(anchor_1_pose, tag_pos_predicted_calibrated, tag_or_versor_calibrated, B_field_vector_1);
+                        get_B_field_for_a_Anchor(anchor_2_pose, tag_pos_predicted_calibrated, tag_or_versor_calibrated, B_field_vector_2);
+                        get_B_field_for_a_Anchor(anchor_3_pose, tag_pos_predicted_calibrated, tag_or_versor_calibrated, B_field_vector_3);
+                        get_B_field_for_a_Anchor(anchor_4_pose, tag_pos_predicted_calibrated, tag_or_versor_calibrated, B_field_vector_4);
+
+                        // computing the V_rx for each of the 4 anchors
+                        float V_rx_1 = V_from_B(B_field_vector_1, tag_or_versor_calibrated, NeroResFreq, TotalGain);
+                        float V_rx_2 = V_from_B(B_field_vector_2, tag_or_versor_calibrated, GialloResFreq, TotalGain);
+                        float V_rx_3 = V_from_B(B_field_vector_3, tag_or_versor_calibrated, GrigioResFreq, TotalGain);
+                        float V_rx_4 = V_from_B(B_field_vector_4, tag_or_versor_calibrated, RossoResFreq, TotalGain);
+
+                        calibrationsGains[0] = meanData_a1 / V_rx_1;
+                        calibrationsGains[1] = meanData_a2 / V_rx_2;
+                        calibrationsGains[2] = meanData_a3 / V_rx_3;
+                        calibrationsGains[3] = meanData_a4 / V_rx_4;
+
+                        DEBUG_PRINT("CG_a1 = %f\n", (double)calibrationsGains[0]);
+                        DEBUG_PRINT("CG_a2 = %f\n", (double)calibrationsGains[1]);
+                        DEBUG_PRINT("CG_a3 = %f\n", (double)calibrationsGains[2]);
+                        DEBUG_PRINT("CG_a4 = %f\n", (double)calibrationsGains[3]);
+                    }
+                    else
+                    {
+
+                        if (currentCalibrationTick == CALIBRATION_TIC_VALUE + 1)
+                        {
+                            DEBUG_PRINT("currentCalibrationTick = %f\n", (double)currentCalibrationTick);
+
+                            paramSetInt(paramGetVarId("kalman", "resetEstimation"), 1);
+                            vTaskDelay(M2T(10));
+                            currentCalibrationTick = currentCalibrationTick + 1;
+                            DEBUG_PRINT("Resetting the Kalman filter after calibrationr\n");
+                            paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
+                            vTaskDelay(M2T(10));
+
+                            // paramSetInt(paramGetVarId("kalman", "resetEstimation"), 0);
+                        }
+
+                        // ------------------------------------ RUNNING CASE ------------------------------------
+
+                        float RotationMatrix[3][3];
+                        // it would be the product between the rotation matrix and the initial [0,0,1] versor
+                        estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
+                        float tag_or_versor[3] = {RotationMatrix[0][2], RotationMatrix[1][2], RotationMatrix[2][2]};
+
+                        /// ------------------------- optimization  for computing position -------------------------
+
+                        // initialize the params for the optimization algorithm
+                        // float my_params_start_cost_all = usecTimestamp();
+                        float x_start[3] = {};
+
+                        if (isFirstMeasurement)
+                        {
+                            DEBUG_PRINT("First measurement\n");
+                            x_start[0] = 0.0f;
+                            x_start[1] = 0.0f;
+                            x_start[2] = 0.0f;
+                            isFirstMeasurement = false;
+                        }
+                        else
+                        {
+                            point_t cfPosP;
+                            estimatorKalmanGetEstimatedPos(&cfPosP);
+                            x_start[0] = cfPosP.x;
+                            x_start[1] = cfPosP.y;
+                            x_start[2] = cfPosP.z;
+                        }
+
+                        if (there_is_saturation)
+                        {
+
+                            myParams_t_3A my_params;
+                            for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS - 1; anchorIdx++)
+                            {
+                                // check if the anchor is not in saturation
+                                // NOTE: ASSUMING MAX 1 ANCHOR IN SATURATION AT A TIME
+                                if (Id_in_saturation[anchorIdx] == 0)
+                                {
+                                    my_params.Anchors_3A[anchorIdx][0] = AnchorPositionMatrix[anchorIdx][0];
+                                    my_params.Anchors_3A[anchorIdx][1] = AnchorPositionMatrix[anchorIdx][1];
+                                    my_params.Anchors_3A[anchorIdx][2] = AnchorPositionMatrix[anchorIdx][2];
+
+                                    my_params.versore_orientamento_cf_3A[0] = tag_or_versor[0];
+                                    my_params.versore_orientamento_cf_3A[1] = tag_or_versor[1];
+                                    my_params.versore_orientamento_cf_3A[2] = tag_or_versor[2];
+
+                                    my_params.Gain_3A = TotalGain;
+
+                                    my_params.frequencies_3A[anchorIdx] = ResonanceFreqs[anchorIdx];
+                                    // using the measured volts to fill the structure
+                                    my_params.MeasuredVoltages_calibrated_3A[anchorIdx] = amplitudes.AllAmpl[anchorIdx] / calibrationsGains[anchorIdx];
+
+                                    // debug
+                                    MeasuredVoltages_calibrated[anchorIdx] = my_params.MeasuredVoltages_calibrated_3A[anchorIdx];
+                                }
+                            }
+                            // float my_params_ms = (float)(usecTimestamp() - my_params_start_cost_all) / 1000.0f;
+
+                            // set the starting point for the optimization algorithm
+
+                            // float optimize_start_cost_all = usecTimestamp();
+                            nm_multivar_optimize_3A(3, x_start, range, &myCostFunction_3A, &my_params, &paramsNM_3A, solution);
+                            // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
+                        }
+                        else
+                        {
+                            myParams_t_4A my_params;
+                            for (int anchorIdx = 0; anchorIdx < NUM_ANCHORS; anchorIdx++)
+                            {
+                                my_params.Anchors_4A[anchorIdx][0] = AnchorPositionMatrix[anchorIdx][0];
+                                my_params.Anchors_4A[anchorIdx][1] = AnchorPositionMatrix[anchorIdx][1];
+                                my_params.Anchors_4A[anchorIdx][2] = AnchorPositionMatrix[anchorIdx][2];
+
+                                my_params.versore_orientamento_cf_4A[0] = tag_or_versor[0];
+                                my_params.versore_orientamento_cf_4A[1] = tag_or_versor[1];
+                                my_params.versore_orientamento_cf_4A[2] = tag_or_versor[2];
+
+                                my_params.Gain_4A = TotalGain;
+
+                                my_params.frequencies_4A[anchorIdx] = ResonanceFreqs[anchorIdx];
+                                // using the measured volts to fill the structure
+                                my_params.MeasuredVoltages_calibrated_4A[anchorIdx] = amplitudes.AllAmpl[anchorIdx] / calibrationsGains[anchorIdx];
+                                // debug
+                                MeasuredVoltages_calibrated[anchorIdx] = my_params.MeasuredVoltages_calibrated_4A[anchorIdx];
+                            }
+                            // float my_params_ms = (float)(usecTimestamp() - my_params_start_cost_all) / 1000.0f;
+
+                            // set the starting point for the optimization algorithm
+
+                            // float optimize_start_cost_all = usecTimestamp();
+                            nm_multivar_optimize_4A(3, x_start, range, &myCostFunction_4A, &my_params, &paramsNM_4A, solution);
+                            // float optimize_ms = (float)(usecTimestamp() - optimize_start_cost_all) / 1000.0f;
+                        }
+
+                        static positionMeasurement_t ext_pos;
+
+                        if (MODEL_TO_USE == 0)
+                        /// ------------------------- optimization  for computing position -------------------------
+                        {
+
+                            // Outlier Detection, computing the euclidean distance between the estimated position by EKF and the solution
+                            // xy
+                            euclidean_distance_xy = euclidean_distance(x_start, solution, 2);
+
+                            if (!(euclidean_distance_xy >= 0.5f))
+                            {
+                                euclidean_distance_xy = 0.0f;
+
+                                ext_pos.x = solution[0];
+                                ext_pos.y = solution[1];
+                                ext_pos.z = solution[2];
+                                ext_pos.stdDev = Optimization_Model_STD;
+                                estimatorEnqueuePosition(&ext_pos);
+                            }
+                        }
+                        else if (MODEL_TO_USE == 1)
+                        /// ------------------------- linear kalman filter --------------------------------
+                        {
+                            // vTaskDelay(M2T(1));
+                            // kalman_update_measurements(solution);
+                            // kalman_update();
+                            // kalman_predict();
+                            // ext_pos.x = solution[0];
+                            // ext_pos.y = solution[1];
+                            // ext_pos.z = solution[2];
+                            // ext_pos.stdDev = Optimization_Model_STD;
+
+                            kf.z_meas[0] = solution[0];
+                            kf.z_meas[1] = solution[1];
+                            kf.z_meas[2] = solution[2];
+
+                            kalman_predict(&kf);
+                            kalman_update(&kf);
+                            ext_pos.x = kf.x_state[0];
+                            ext_pos.y = kf.x_state[1];
+                            ext_pos.z = kf.x_state[2];
+                            ext_pos.stdDev = Optimization_Model_STD;
+
+                            estimatorEnqueuePosition(&ext_pos);
+                        }
+                    }
+                }
+            }
+            // Iteration is done, restart the ADC, reset variables
+            finalizeCycle();
         }
         else
         {
@@ -1380,7 +1748,14 @@ static void mytask(void *param)
         // Defining the delay between the executions
         // float diff_in_ms = (float)(usecTimestamp() - start_cost) / 1000.0f;
 
+        // print every 10 cycles
+        // if (counter % 10 == 0)
+        // {
+        //     DEBUG_PRINT("Time for the cycle in ms: %f\n", (double)diff_in_ms);
+        // }
+
         vTaskDelay(M2T(SYSTEM_PERIOD_MS));
+        counter++;
     }
 }
 
@@ -1416,28 +1791,40 @@ DECK_DRIVER(magneticDriver);
 
 #define CONFIG_DEBUG_LOG_ENABLE = y
 
-// LOG_GROUP_START(MAGNETIC_VOLTAGES)
-// LOG_ADD(LOG_FLOAT, Nero, &NeroAmpl)
-// LOG_ADD(LOG_FLOAT, Giallo, &GialloAmpl)
-// LOG_ADD(LOG_FLOAT, Grigio, &GrigioAmpl)
-// LOG_ADD(LOG_FLOAT, Rosso, &RossoAmpl)
-// LOG_GROUP_STOP(MAGNETIC_VOLTAGES)
+LOG_GROUP_START(Optimization_Model)
+LOG_ADD(LOG_FLOAT, T_x, &solution[0])
+LOG_ADD(LOG_FLOAT, T_y, &solution[1])
+LOG_ADD(LOG_FLOAT, T_z, &solution[2])
 
-// PARAM_GROUP_START(MAGNETIC_Params)
-// // PARAM_ADD_CORE(PARAM_UINT16, NeroResFreq, &NeroResFreq)
-// // volatile int Nero_IDX = NeroIdx;
-// PARAM_ADD(PARAM_FLOAT, std_magn, &MagneticStandardDeviation)
-// // PARAM_ADD_CORE(PARAM_UINT16, Nero_Index, &Nero_IDX)
-// // PARAM_ADD_CORE(PARAM_UINT16, Giallo_Index, &Giallo_Idx)
-// // PARAM_ADD_CORE(PARAM_UINT16, Grigio_Index, &Grigio_Idx)
-// // PARAM_ADD_CORE(PARAM_UINT16, Rosso_Index, &Rosso_Idx)
-// PARAM_GROUP_STOP(MAGNETIC_Params)
+// LOG_ADD(LOG_FLOAT, Out_d, &euclidean_distance_xy)
+// LOG_ADD(LOG_FLOAT, Out_z, &euclidean_distance_z)
 
-// //// POTENTIOMETER
-// LOG_GROUP_START(Potentiometer_g_L)
-// LOG_ADD(LOG_FLOAT, GpS, &GainValue_Setted)
-// LOG_GROUP_STOP(Potentiometer_G_L)
+// LOG_ADD(LOG_UINT8, Nero_sat, &idSaturations[0])
+// LOG_ADD(LOG_UINT8, Gial_sat, &idSaturations[1])
+// LOG_ADD(LOG_UINT8, Grig_sat, &idSaturations[2])
+// LOG_ADD(LOG_UINT8, Ros_sat, &idSaturations[3])
 
-// PARAM_GROUP_START(Potentiometer_G_P)
-// PARAM_ADD(PARAM_FLOAT, G_pot, &GainValue)
-// PARAM_GROUP_STOP(Potentiometer_G_P)
+LOG_ADD(LOG_FLOAT, KF_x, &kf.x_state[0])
+LOG_ADD(LOG_FLOAT, KF_y, &kf.x_state[1])
+LOG_ADD(LOG_FLOAT, KF_z, &kf.x_state[2])
+
+LOG_GROUP_STOP(Optimization_Model)
+
+// PARAM_GROUP_START(Opt_Model_Param)
+// PARAM_ADD(PARAM_FLOAT, Opt_STD, &Optimization_Model_STD)
+// PARAM_GROUP_STOP(Opt_Model_Param)
+
+LOG_GROUP_START(Dipole_Model)
+
+LOG_ADD(LOG_FLOAT, M_V1, &MeasuredVoltages_calibrated[0])
+LOG_ADD(LOG_FLOAT, M_V2, &MeasuredVoltages_calibrated[1])
+LOG_ADD(LOG_FLOAT, M_V3, &MeasuredVoltages_calibrated[2])
+LOG_ADD(LOG_FLOAT, M_V4, &MeasuredVoltages_calibrated[3])
+
+LOG_GROUP_STOP(Dipole_Model)
+
+// PARAM_GROUP_START(Dipole_Params)
+// // PARAM_ADD(PARAM_UINT32, calibTic, &currentCalibrationTick)
+// // PARAM_ADD(PARAM_FLOAT, STD_nelder, &Optimization_Model_STD)
+
+// PARAM_GROUP_STOP(Dipole_Params)

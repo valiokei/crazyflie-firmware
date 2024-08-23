@@ -28,3 +28,4 @@ obj-$(CONFIG_DECK_ACS37800)             += acs37800.o
 obj-y += MagneticDeck.o
 obj-y += nelder_mead_4A.o
 obj-y += nelder_mead_3A.o
+obj-y += LinearKalmanFilterRW.o

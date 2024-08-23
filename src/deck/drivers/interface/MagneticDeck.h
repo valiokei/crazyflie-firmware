@@ -8,6 +8,8 @@
 #include "stm32f4xx.h"
 #include "stm32f4xx_gpio.h"
 
+#define MODEL_TO_USE 0 // 0 for Nelder-Mead strictly, 1 for Nelder-Mead with Kalman Filter
+
 // -------------------------- ADC -------------------------------------------
 // ADC DMA configuration
 #define ARRAY_SIZE 2048
@@ -36,7 +38,28 @@
 
 // ------------------------ Measurement Model Params -------------------------------------------
 #define Default_MagneticStandardDeviation 0.0001f
-#define G_INA 1000.0f
+#define G_INA 700.0f
+#define Optimization_Model_STD 0.06f
+
+// ------------------------ Linear Kalman Filter Params -------------------------------------------
+#define STATE_DIM 3   // Stato: [x, y, z]
+#define MEASURE_DIM 3 // Misure: [x, y, z]
+#define EPSILON 1e-6f // Termine di regolarizzazione
+
+typedef struct
+{
+    float F[STATE_DIM][STATE_DIM];
+    float H[MEASURE_DIM][STATE_DIM];
+    float Q[STATE_DIM][STATE_DIM];
+    float R[MEASURE_DIM][MEASURE_DIM];
+    float P[STATE_DIM][STATE_DIM];
+    float x_state[STATE_DIM];
+    float z_meas[MEASURE_DIM];
+
+} KalmanFilter;
+
+#define q_kf_default 0.01f
+#define sigma_x_kf_default 0.01f // will be squared in the R matrix
 
 // -------------------------  adaptive std on Measured Voltage -------------------------------
 #define UseAdaptiveSTD 0
@@ -131,7 +154,7 @@
 
 // -------------------------- Magnetic Deck -------------------------------------------
 
-uint16_t ValueforDAC_from_DesideredVol(float desidered_Voltage);
+uint16_t ValueforDAC_from_DesideredVolt(float desidered_Voltage);
 
 uint16_t WiperResistanceValue_From_Interpolation(float Vdd);
 
@@ -142,8 +165,20 @@ uint8_t Potentiometer_Value_To_Set(float desidered_Gain);
 void DMA2_Stream4_IRQHandler(void);
 
 void ADC1_IRQHandler(void);
+typedef struct
+{
+    float NeroAmpl;
+    float GialloAmpl;
+    float GrigioAmpl;
+    float RossoAmpl;
+    float AllAmpl[NUM_ANCHORS];
+} FFT_Amplitudes;
 
-void performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor);
+FFT_Amplitudes performFFT(uint32_t *Input_buffer_pointer, float32_t *Output_buffer_pointer, float32_t flattopCorrectionFactor);
+
+void check_saturations(FFT_Amplitudes *amplitudes, int *Id_in_saturation, bool *there_is_saturation);
+
+void finalizeCycle();
 
 // -------------------------- Measurement Model  -------------------------------------------
 
