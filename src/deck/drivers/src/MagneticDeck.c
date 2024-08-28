@@ -1379,6 +1379,7 @@ static void mytask(void *param)
 
         // Defining the delay between the executions
         // float diff_in_ms = (float)(usecTimestamp() - start_cost) / 1000.0f;
+        // DEBUG_PRINT("Time for the deck task: %f ms\n", (double)diff_in_ms);
 
         vTaskDelay(M2T(SYSTEM_PERIOD_MS));
     }

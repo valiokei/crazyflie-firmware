@@ -97,10 +97,15 @@ static float euclidean_distance_z = 0.0f;
 static int8_t idSaturations[4] = {0, 0, 0, 0};
 
 // Set the range where to look for the minumum
-static float range[3] = {-0.3f, +0.3f, 0.3f};
+// static float range[3] = {-0.3f, +0.3f, 0.3f};
+float range[3] = {+0.05f, +0.05f, 0.05f};
 static float solution[3];
 static nm_params_t_3A paramsNM_3A;
 static nm_params_t_4A paramsNM_4A;
+
+// static float maxMs = 0.0f;
+// static float meanMs = 0.0f;
+// static int counterMs = 0;
 
 void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnchor)
 {
@@ -374,7 +379,15 @@ void kalmanCoreUpdateWithVolt(kalmanCoreData_t *this, voltMeasurement_t *voltAnc
 
             // float EKF_UPDATE_ms = (float)(usecTimestamp() - EKF_UPDATE_start_cost_all) / 1000.0f;
             // float ALL_ms = (float)(usecTimestamp() - all_start) / 1000.0f;
-            // DEBUG_PRINT("ALL_ms = %f\n", (double)ALL_ms);
+            // meanMs += ALL_ms;
+            // counterMs++;
+            // DEBUG_PRINT("Mean = %f ms\n", (double)(meanMs / counterMs));
+            // if (ALL_ms > maxMs)
+            // {
+            //     maxMs = ALL_ms;
+            //     DEBUG_PRINT("****New Max = %f ms*****\n", (double)ALL_ms);
+            // }
+
             // float a = 0;
             // DEBUG_PRINT("Estimated position x: %f,\n", (double)estimated_position[0]);
         }
