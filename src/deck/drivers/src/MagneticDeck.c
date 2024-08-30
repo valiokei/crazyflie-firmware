@@ -77,7 +77,7 @@ float MagneticStandardDeviation = Default_MagneticStandardDeviation;
 
 // -------------------------- NelderMead -------------------------------------------
 // Set the range where to look for the minumum
-static float range[3] = {-0.3f, +0.3f, 0.3f};
+float range[3] = {+0.05f, +0.05f, 0.05f};
 static float solution[3];
 
 // --------------------------Linear Kalman Filter-------------------------------------------
@@ -93,6 +93,8 @@ float NeroAmpl = 0;
 float GialloAmpl = 0;
 float GrigioAmpl = 0;
 float RossoAmpl = 0;
+
+volatile float LKF_ESTIMATION_DEBUG[3] = {0.0f, 0.0f, 0.0f};
 
 // FFT
 // static uint16_t bin_size = BIN_SIZE;
@@ -1379,14 +1381,14 @@ static void mytask(void *param)
 
     nm_params_init_default_3A(&paramsNM_3A, 3);
     paramsNM_3A.debug_log = 0;
-    paramsNM_3A.max_iterations = 18;
+    paramsNM_3A.max_iterations = 20;
     paramsNM_3A.tol_fx = 1e-6f;
     paramsNM_3A.tol_x = 1e-5f;
     paramsNM_3A.restarts = 0;
 
     nm_params_init_default_4A(&paramsNM_4A, 3);
     paramsNM_4A.debug_log = 0;
-    paramsNM_4A.max_iterations = 18;
+    paramsNM_4A.max_iterations = 20;
     paramsNM_4A.tol_fx = 1e-6f;
     paramsNM_4A.tol_x = 1e-5f;
     paramsNM_4A.restarts = 0;
@@ -1541,7 +1543,6 @@ static void mytask(void *param)
                         /// ------------------------- optimization  for computing position -------------------------
 
                         // initialize the params for the optimization algorithm
-                        // float my_params_start_cost_all = usecTimestamp();
                         float x_start[3] = {};
 
                         if (isFirstMeasurement)
@@ -1637,7 +1638,7 @@ static void mytask(void *param)
                             // xy
                             euclidean_distance_xy = euclidean_distance(x_start, solution, 2);
 
-                            if (!(euclidean_distance_xy >= 0.5f))
+                            if (!(euclidean_distance_xy >= 0.20f))
                             {
                                 euclidean_distance_xy = 0.0f;
 
@@ -1666,9 +1667,23 @@ static void mytask(void *param)
 
                             kalman_predict(&kf);
                             kalman_update(&kf);
+
+                            // DEBUG_PRINT("KF x_state[0] = %f\n", (double)kf.x_state[0]);
+                            // DEBUG_PRINT("KF x_state[1] = %f\n", (double)kf.x_state[1]);
+                            // DEBUG_PRINT("KF x_state[2] = %f\n", (double)kf.x_state[2]);
+
                             ext_pos.x = kf.x_state[0];
                             ext_pos.y = kf.x_state[1];
                             ext_pos.z = kf.x_state[2];
+
+                            LKF_ESTIMATION_DEBUG[0] = ext_pos.x;
+                            LKF_ESTIMATION_DEBUG[1] = ext_pos.y;
+                            LKF_ESTIMATION_DEBUG[2] = ext_pos.z;
+
+                            // DEBUG_PRINT("LKF_ESTIMATION_DEBUG[0] = %f\n", (double)LKF_ESTIMATION_DEBUG[0]);
+                            // DEBUG_PRINT("LKF_ESTIMATION_DEBUG[1] = %f\n", (double)LKF_ESTIMATION_DEBUG[1]);
+                            // DEBUG_PRINT("LKF_ESTIMATION_DEBUG[2] = %f\n", (double)LKF_ESTIMATION_DEBUG[2]);
+
                             ext_pos.stdDev = Optimization_Model_STD;
 
                             estimatorEnqueuePosition(&ext_pos);
@@ -1748,7 +1763,7 @@ static void mytask(void *param)
         // Defining the delay between the executions
         // float diff_in_ms = (float)(usecTimestamp() - start_cost) / 1000.0f;
 
-        // print every 10 cycles
+        // // print every 10 cycles
         // if (counter % 10 == 0)
         // {
         //     DEBUG_PRINT("Time for the cycle in ms: %f\n", (double)diff_in_ms);
@@ -1804,9 +1819,9 @@ LOG_ADD(LOG_FLOAT, T_z, &solution[2])
 // LOG_ADD(LOG_UINT8, Grig_sat, &idSaturations[2])
 // LOG_ADD(LOG_UINT8, Ros_sat, &idSaturations[3])
 
-LOG_ADD(LOG_FLOAT, KF_x, &kf.x_state[0])
-LOG_ADD(LOG_FLOAT, KF_y, &kf.x_state[1])
-LOG_ADD(LOG_FLOAT, KF_z, &kf.x_state[2])
+LOG_ADD(LOG_FLOAT, KF_x, &LKF_ESTIMATION_DEBUG[0])
+LOG_ADD(LOG_FLOAT, KF_y, &LKF_ESTIMATION_DEBUG[1])
+LOG_ADD(LOG_FLOAT, KF_z, &LKF_ESTIMATION_DEBUG[2])
 
 LOG_GROUP_STOP(Optimization_Model)
 

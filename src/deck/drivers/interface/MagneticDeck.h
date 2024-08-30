@@ -38,8 +38,8 @@
 
 // ------------------------ Measurement Model Params -------------------------------------------
 #define Default_MagneticStandardDeviation 0.0001f
-#define G_INA 700.0f
-#define Optimization_Model_STD 0.06f
+#define G_INA 1000.0f
+#define Optimization_Model_STD 0.08f
 
 // ------------------------ Linear Kalman Filter Params -------------------------------------------
 #define STATE_DIM 3   // Stato: [x, y, z]
@@ -58,8 +58,11 @@ typedef struct
 
 } KalmanFilter;
 
-#define q_kf_default 0.01f
-#define sigma_x_kf_default 0.01f // will be squared in the R matrix
+#define q_kf_default 0.025f
+#define sigma_x_kf_default 0.05f // will be squared in the R matrix
+
+// const float q = 0.05f;
+// const float sigma_x = 0.05f * 0.05f;
 
 // -------------------------  adaptive std on Measured Voltage -------------------------------
 #define UseAdaptiveSTD 0
