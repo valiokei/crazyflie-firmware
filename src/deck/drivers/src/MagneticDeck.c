@@ -1418,6 +1418,8 @@ static void mytask(void *param)
 
     kalman_init(&kf, initial_state_kalman_filter);
 
+    DEBUG_PRINT("Bin_size: %d\n", (int)BIN_SIZE);
+
     while (1)
     {
         // uint64_t start_cost = usecTimestamp();
@@ -1550,7 +1552,7 @@ static void mytask(void *param)
                             DEBUG_PRINT("First measurement\n");
                             x_start[0] = 0.0f;
                             x_start[1] = 0.0f;
-                            x_start[2] = 0.0f;
+                            x_start[2] = 0.03f;
                             isFirstMeasurement = false;
                         }
                         else
@@ -1559,7 +1561,7 @@ static void mytask(void *param)
                             estimatorKalmanGetEstimatedPos(&cfPosP);
                             x_start[0] = cfPosP.x;
                             x_start[1] = cfPosP.y;
-                            x_start[2] = cfPosP.z;
+                            x_start[2] = cfPosP.z + offsetCoil;
                         }
 
                         if (there_is_saturation)
@@ -1644,7 +1646,7 @@ static void mytask(void *param)
 
                                 ext_pos.x = solution[0];
                                 ext_pos.y = solution[1];
-                                ext_pos.z = solution[2];
+                                ext_pos.z = solution[2] - offsetCoil;
                                 ext_pos.stdDev = Optimization_Model_STD;
                                 estimatorEnqueuePosition(&ext_pos);
                             }

@@ -41,6 +41,8 @@
 #define G_INA 1000.0f
 #define Optimization_Model_STD 0.08f
 
+#define offsetCoil 0.025f // 3 cm
+
 // ------------------------ Linear Kalman Filter Params -------------------------------------------
 #define STATE_DIM 3   // Stato: [x, y, z]
 #define MEASURE_DIM 3 // Misure: [x, y, z]
@@ -79,7 +81,8 @@ typedef struct
 #define NUM_ANCHORS 4
 
 // Resonance Freqs Anchors in Hz
-#define NeroResFreq 213e3
+// #define NeroResFreq 213e3
+#define NeroResFreq 210e3
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
@@ -88,7 +91,8 @@ typedef struct
 #define Nero_Position_z +0.30f
 #define Nero_Id 0
 
-#define GialloResFreq 203e3
+// #define GialloResFreq 203e3
+#define GialloResFreq 199e3
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
@@ -97,7 +101,8 @@ typedef struct
 #define Giallo_Position_z +0.30f
 #define Giallo_Id 1
 
-#define GrigioResFreq 193e3
+// #define GrigioResFreq 193e3
+#define GrigioResFreq 189e3
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
@@ -106,7 +111,8 @@ typedef struct
 #define Grigio_Position_z +0.30f
 #define Grigio_Id 2
 
-#define RossoResFreq 183e3
+// #define RossoResFreq 183e3
+#define RossoResFreq 181e3
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
