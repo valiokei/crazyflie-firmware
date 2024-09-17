@@ -9,6 +9,7 @@
 #include "stm32f4xx_gpio.h"
 
 #define MODEL_TO_USE 0 // 0 for Nelder-Mead strictly, 1 for Nelder-Mead with Kalman Filter
+#define Z_MEASUREMENTS_TO_ACCUMULATE 5
 
 // -------------------------- ADC -------------------------------------------
 // ADC DMA configuration
@@ -88,7 +89,7 @@ typedef struct
 #define Nero_Q -2.635
 #define Nero_Position_x 0.48f
 #define Nero_Position_y 0.48f
-#define Nero_Position_z +0.30f
+#define Nero_Position_z +0.30f - 0.11f
 #define Nero_Id 0
 
 // #define GialloResFreq 203e3
@@ -98,7 +99,7 @@ typedef struct
 #define Giallo_Q -2.629
 #define Giallo_Position_x +0.48f
 #define Giallo_Position_y -0.48f
-#define Giallo_Position_z +0.30f
+#define Giallo_Position_z +0.30f - 0.11f
 #define Giallo_Id 1
 
 // #define GrigioResFreq 193e3
@@ -108,7 +109,7 @@ typedef struct
 #define Grigio_Q -2.647
 #define Grigio_Position_x -0.48f
 #define Grigio_Position_y -0.48f
-#define Grigio_Position_z +0.30f
+#define Grigio_Position_z +0.30f - 0.11f
 #define Grigio_Id 2
 
 // #define RossoResFreq 183e3
@@ -118,7 +119,7 @@ typedef struct
 #define Rosso_Q -2.640
 #define Rosso_Position_x -0.48f
 #define Rosso_Position_y +0.48f
-#define Rosso_Position_z +0.30f
+#define Rosso_Position_z +0.30f - 0.11f
 #define Rosso_Id 3
 
 // ------------------------ PHYSICAL COIL -------------------------------------------

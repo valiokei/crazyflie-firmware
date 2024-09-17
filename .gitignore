@@ -20,6 +20,8 @@ cffirmware.py
 /flapper.*
 *.gch
 
+.venv/*
+
 current_platform.mk
 
 /generated/**
@@ -48,3 +50,9 @@ build/
 *.elf
 
 tools/dependency/web/data.js
+vendor/FreeRTOS
+vendor/libdw1000
+tmp_server.yaml
+tmp_motion_capture.yaml
+vendor/FreeRTOS
+vendor/libdw1000

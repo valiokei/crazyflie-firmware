@@ -37,7 +37,7 @@
 #include "kalman_core.h"
 #include "LinearKalmanFilterRW.h"
 
-#define CONFIG_DEBUG = y
+// #define CONFIG_DEBUG = y
 static bool isInit = false;
 
 // Anchors
@@ -79,6 +79,7 @@ float MagneticStandardDeviation = Default_MagneticStandardDeviation;
 // Set the range where to look for the minumum
 float range[3] = {+0.05f, +0.05f, 0.05f};
 static float solution[3];
+static float z_final_measurement = 0.0f;
 
 // --------------------------Linear Kalman Filter-------------------------------------------
 KalmanFilter kf;
@@ -247,12 +248,12 @@ float computeSTD(float *data, int arrayDimension)
         sum += data[i];
     }
 
-    mean = sum / arrayDimension;
+    mean = sum / (float)arrayDimension;
 
     for (i = 0; i < arrayDimension; i++)
         standardDeviation += powf(data[i] - mean, 2);
 
-    return sqrtf(standardDeviation / arrayDimension);
+    return sqrtf(standardDeviation / (float)arrayDimension);
 }
 
 // function that given 3 points reonctruct a paraboloid and extract the peack
@@ -1420,6 +1421,10 @@ static void mytask(void *param)
 
     DEBUG_PRINT("Bin_size: %d\n", (int)BIN_SIZE);
 
+    // ----------------------- moving average z-measurements -----------------------
+    int numberOfZMeasurements = 0;
+    float ZMeasurements[10];
+
     while (1)
     {
         // uint64_t start_cost = usecTimestamp();
@@ -1552,7 +1557,7 @@ static void mytask(void *param)
                             DEBUG_PRINT("First measurement\n");
                             x_start[0] = 0.0f;
                             x_start[1] = 0.0f;
-                            x_start[2] = 0.03f;
+                            x_start[2] = 0.01f + offsetCoil;
                             isFirstMeasurement = false;
                         }
                         else
@@ -1640,13 +1645,54 @@ static void mytask(void *param)
                             // xy
                             euclidean_distance_xy = euclidean_distance(x_start, solution, 2);
 
+                            // compensate z coil offset
+                            solution[2] = solution[2] - offsetCoil;
+                            // DEBUG_PRINT("Solution[2] = %f\n", (double)solution[2]);
+
+                            // ACCUMULATE Z MEASUREMENTS UNTIL RICH THE MAX NUMBER OF MEASUREMENTS (I.E. 10)
+                            if (numberOfZMeasurements < Z_MEASUREMENTS_TO_ACCUMULATE)
+                            {
+                                // accumulate the measurements
+
+                                ZMeasurements[numberOfZMeasurements] = solution[2];
+                                numberOfZMeasurements++;
+
+                                // compute the mean using numberofZMeasurements
+                                float zsum = 0.0f;
+                                for (int i = 0; i < numberOfZMeasurements; i++)
+                                {
+                                    zsum += ZMeasurements[i];
+                                }
+                                z_final_measurement = zsum / (float)numberOfZMeasurements;
+                                // DEBUG_PRINT("Z Final Measurement: %f, numberOfZMeasurements: %f\n", (double)z_final_measurement, (double)numberOfZMeasurements);
+                            }
+                            if (numberOfZMeasurements == Z_MEASUREMENTS_TO_ACCUMULATE)
+                            {
+                                // remove the oldest element, insert the new one
+                                for (int i = 0; i < Z_MEASUREMENTS_TO_ACCUMULATE - 1; i++)
+                                {
+                                    ZMeasurements[i] = ZMeasurements[i + 1];
+                                }
+                                ZMeasurements[Z_MEASUREMENTS_TO_ACCUMULATE - 1] = solution[2];
+
+                                // compute the mean using numberofZMeasurements
+                                float zsum = 0.0f;
+                                for (int i = 0; i < Z_MEASUREMENTS_TO_ACCUMULATE; i++)
+                                {
+                                    zsum += ZMeasurements[i];
+                                }
+                                z_final_measurement = zsum / (float)Z_MEASUREMENTS_TO_ACCUMULATE;
+                                // DEBUG_PRINT("Z Final Measurement: %f\n", (double)z_final_measurement);
+                            }
+
                             if (!(euclidean_distance_xy >= 0.20f))
                             {
                                 euclidean_distance_xy = 0.0f;
 
                                 ext_pos.x = solution[0];
                                 ext_pos.y = solution[1];
-                                ext_pos.z = solution[2] - offsetCoil;
+                                ext_pos.z = z_final_measurement;
+                                // ext_pos.z = solution[2] - offsetCoil; // NOTA: è COMPENSATO PRIMA ORA
                                 ext_pos.stdDev = Optimization_Model_STD;
                                 estimatorEnqueuePosition(&ext_pos);
                             }
@@ -1812,6 +1858,7 @@ LOG_GROUP_START(Optimization_Model)
 LOG_ADD(LOG_FLOAT, T_x, &solution[0])
 LOG_ADD(LOG_FLOAT, T_y, &solution[1])
 LOG_ADD(LOG_FLOAT, T_z, &solution[2])
+LOG_ADD(LOG_FLOAT, Z_AVG, &z_final_measurement)
 
 // LOG_ADD(LOG_FLOAT, Out_d, &euclidean_distance_xy)
 // LOG_ADD(LOG_FLOAT, Out_z, &euclidean_distance_z)

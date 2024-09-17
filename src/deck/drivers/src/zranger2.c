@@ -48,7 +48,7 @@
 static const float expPointA = 2.5f;
 static const float expStdA = 0.0025f; // STD at elevation expPointA [m]
 static const float expPointB = 4.0f;
-static const float expStdB = 0.2f;    // STD at elevation expPointB [m]
+static const float expStdB = 0.2f; // STD at elevation expPointB [m]
 static float expCoeff;
 
 #define RANGE_OUTLIER_LIMIT 5000 // the measured range is in [mm]
@@ -61,35 +61,35 @@ NO_DMA_CCM_SAFE_ZERO_INIT static VL53L1_Dev_t dev;
 
 static uint16_t zRanger2GetMeasurementAndRestart(VL53L1_Dev_t *dev)
 {
-    VL53L1_Error status = VL53L1_ERROR_NONE;
-    VL53L1_RangingMeasurementData_t rangingData;
-    uint8_t dataReady = 0;
-    uint16_t range;
+  VL53L1_Error status = VL53L1_ERROR_NONE;
+  VL53L1_RangingMeasurementData_t rangingData;
+  uint8_t dataReady = 0;
+  uint16_t range;
 
-    while (dataReady == 0)
-    {
-        status = VL53L1_GetMeasurementDataReady(dev, &dataReady);
-        vTaskDelay(M2T(1));
-    }
+  while (dataReady == 0)
+  {
+    status = VL53L1_GetMeasurementDataReady(dev, &dataReady);
+    vTaskDelay(M2T(1));
+  }
 
-    status = VL53L1_GetRangingMeasurementData(dev, &rangingData);
-    range = rangingData.RangeMilliMeter;
+  status = VL53L1_GetRangingMeasurementData(dev, &rangingData);
+  range = rangingData.RangeMilliMeter;
 
-    VL53L1_StopMeasurement(dev);
-    status = VL53L1_StartMeasurement(dev);
-    status = status;
+  VL53L1_StopMeasurement(dev);
+  status = VL53L1_StartMeasurement(dev);
+  status = status;
 
-    return range;
+  return range;
 }
 
-void zRanger2Init(DeckInfo* info)
+void zRanger2Init(DeckInfo *info)
 {
   if (isInit)
     return;
 
   if (vl53l1xInit(&dev, I2C1_DEV))
   {
-      DEBUG_PRINT("Z-down sensor [OK]\n");
+    DEBUG_PRINT("Z-down sensor [OK]\n");
   }
   else
   {
@@ -113,7 +113,7 @@ bool zRanger2Test(void)
   return true;
 }
 
-void zRanger2Task(void* arg)
+void zRanger2Task(void *arg)
 {
   TickType_t lastWakeTime;
 
@@ -128,7 +128,11 @@ void zRanger2Task(void* arg)
 
   lastWakeTime = xTaskGetTickCount();
 
-  while (1) {
+  int measurmentCounter = 0;
+  bool lastMeasurementWasFromFloor = false;
+
+  while (1)
+  {
     vTaskDelayUntil(&lastWakeTime, M2T(25));
 
     range_last = zRanger2GetMeasurementAndRestart(&dev);
@@ -137,23 +141,52 @@ void zRanger2Task(void* arg)
     // check if range is feasible and push into the estimator
     // the sensor should not be able to measure >5 [m], and outliers typically
     // occur as >8 [m] measurements
-    if (range_last < RANGE_OUTLIER_LIMIT) {
+    if (range_last < RANGE_OUTLIER_LIMIT)
+    {
       float distance = (float)range_last * 0.001f; // Scale from [mm] to [m]
-      float stdDev = expStdA * (1.0f  + expf( expCoeff * (distance - expPointA)));
-      rangeEnqueueDownRangeInEstimator(distance, stdDev, xTaskGetTickCount());
+      float stdDev = expStdA * (1.0f + expf(expCoeff * (distance - expPointA)));
+      // rangeEnqueueDownRangeInEstimator(distance, stdDev, xTaskGetTickCount());
+
+      // detection of the zone of the drone
+      if (range_last < 150)
+      {
+        // the drone is landed or over the robodog
+        rangeEnqueueDownRangeInEstimator(distance, stdDev, xTaskGetTickCount());
+        measurmentCounter = 0;
+      }
+
+      if (range_last > 250)
+      {
+
+        // count this measurement as a measurement from the floor
+        lastMeasurementWasFromFloor = true;
+        measurmentCounter++;
+
+        // prossima prova fai match con posizione ekf drone sapendo dove si trova
+
+        // if we have 4 measurements from the floor, we can assume that the drone is on the floor
+        if (measurmentCounter == 10)
+        {
+          //  the drone is out of the convex hull of the robodog, the measurement has to be compensated
+          float robodogOffset = 0.11f;
+          rangeEnqueueDownRangeInEstimator(distance - robodogOffset, stdDev, xTaskGetTickCount());
+          measurmentCounter = 0;
+          DEBUG_PRINT("Drone is on the floor!!\n");
+        }
+      }
     }
   }
 }
 
 static const DeckDriver zranger2_deck = {
-  .vid = 0xBC,
-  .pid = 0x0E,
-  .name = "bcZRanger2",
-  .usedGpio = 0,
-  .usedPeriph = DECK_USING_I2C,
+    .vid = 0xBC,
+    .pid = 0x0E,
+    .name = "bcZRanger2",
+    .usedGpio = 0,
+    .usedPeriph = DECK_USING_I2C,
 
-  .init = zRanger2Init,
-  .test = zRanger2Test,
+    .init = zRanger2Init,
+    .test = zRanger2Test,
 };
 
 DECK_DRIVER(zranger2_deck);
