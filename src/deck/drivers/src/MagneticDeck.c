@@ -1491,7 +1491,7 @@ static void mytask(void *param)
                         // point_t cfPosP;
                         // estimatorKalmanGetEstimatedPos(&cfPosP);
                         // float tag_pos_predicted_calibrated[3] = {cfPosP.x, cfPosP.y, cfPosP.z};
-                        float tag_pos_predicted_calibrated[3] = {0.0f, 0.0f, 0.0f};
+                        float tag_pos_predicted_calibrated[3] = {0.0f, 0.0f, 0.01f + offsetCoil};
 
                         // float RotationMatrix[3][3];
                         // estimatorKalmanGetEstimatedRot((float *)RotationMatrix);
@@ -1645,54 +1645,77 @@ static void mytask(void *param)
                             // xy
                             euclidean_distance_xy = euclidean_distance(x_start, solution, 2);
 
-                            // compensate z coil offset
-                            solution[2] = solution[2] - offsetCoil;
-                            // DEBUG_PRINT("Solution[2] = %f\n", (double)solution[2]);
-
-                            // ACCUMULATE Z MEASUREMENTS UNTIL RICH THE MAX NUMBER OF MEASUREMENTS (I.E. 10)
-                            if (numberOfZMeasurements < Z_MEASUREMENTS_TO_ACCUMULATE)
+                            // check outlier on z
+                            float zTreshold = 0.1f;
+                            if (solution[2] - x_start[2] > zTreshold || solution[2] - x_start[2] < -zTreshold)
                             {
-                                // accumulate the measurements
-
-                                ZMeasurements[numberOfZMeasurements] = solution[2];
-                                numberOfZMeasurements++;
-
-                                // compute the mean using numberofZMeasurements
-                                float zsum = 0.0f;
-                                for (int i = 0; i < numberOfZMeasurements; i++)
-                                {
-                                    zsum += ZMeasurements[i];
-                                }
-                                z_final_measurement = zsum / (float)numberOfZMeasurements;
-                                // DEBUG_PRINT("Z Final Measurement: %f, numberOfZMeasurements: %f\n", (double)z_final_measurement, (double)numberOfZMeasurements);
+                                Optimization_Model_STD_Z = 0.3f;
                             }
-                            if (numberOfZMeasurements == Z_MEASUREMENTS_TO_ACCUMULATE)
+                            else
                             {
-                                // remove the oldest element, insert the new one
-                                for (int i = 0; i < Z_MEASUREMENTS_TO_ACCUMULATE - 1; i++)
-                                {
-                                    ZMeasurements[i] = ZMeasurements[i + 1];
-                                }
-                                ZMeasurements[Z_MEASUREMENTS_TO_ACCUMULATE - 1] = solution[2];
+                                // is not an outlier
 
-                                // compute the mean using numberofZMeasurements
-                                float zsum = 0.0f;
-                                for (int i = 0; i < Z_MEASUREMENTS_TO_ACCUMULATE; i++)
+                                //  now check if the drone is taking off or is landing in both cases the z is not reliable
+                                if (x_start[2] < TARGET_FLYING_HEIGHT - 0.02)
                                 {
-                                    zsum += ZMeasurements[i];
+                                    Optimization_Model_STD_Z = 0.3f;
                                 }
-                                z_final_measurement = zsum / (float)Z_MEASUREMENTS_TO_ACCUMULATE;
-                                // DEBUG_PRINT("Z Final Measurement: %f\n", (double)z_final_measurement);
+                                else
+                                {
+                                    Optimization_Model_STD_Z = 0.08f;
+                                }
+
+                                // Optimization_Model_STD_Z = 0.12f;
+
+                                // // compensate z coil offset
+                                // solution[2] = solution[2] - offsetCoil;
+                                // // ACCUMULATE Z MEASUREMENTS UNTIL RICH THE MAX NUMBER OF MEASUREMENTS (I.E. 10)
+                                // if (numberOfZMeasurements < Z_MEASUREMENTS_TO_ACCUMULATE)
+                                // {
+                                //     // accumulate the measurements
+                                //     ZMeasurements[numberOfZMeasurements] = solution[2];
+                                //     numberOfZMeasurements++;
+
+                                //     // compute the mean using numberofZMeasurements
+                                //     float zsum = 0.0f;
+                                //     for (int i = 0; i < numberOfZMeasurements; i++)
+                                //     {
+                                //         zsum += ZMeasurements[i];
+                                //     }
+                                //     z_final_measurement = zsum / (float)numberOfZMeasurements;
+                                //     // DEBUG_PRINT("Z Final Measurement: %f, numberOfZMeasurements: %f\n", (double)z_final_measurement, (double)numberOfZMeasurements);
+                                // }
+                                // if (numberOfZMeasurements == Z_MEASUREMENTS_TO_ACCUMULATE)
+                                // {
+                                //     // remove the oldest element, insert the new one
+                                //     for (int i = 0; i < Z_MEASUREMENTS_TO_ACCUMULATE - 1; i++)
+                                //     {
+                                //         ZMeasurements[i] = ZMeasurements[i + 1];
+                                //     }
+                                //     ZMeasurements[Z_MEASUREMENTS_TO_ACCUMULATE - 1] = solution[2];
+
+                                //     // compute the mean using numberofZMeasurements
+                                //     float zsum = 0.0f;
+                                //     for (int i = 0; i < Z_MEASUREMENTS_TO_ACCUMULATE; i++)
+                                //     {
+                                //         zsum += ZMeasurements[i];
+                                //     }
+                                //     z_final_measurement = zsum / (float)Z_MEASUREMENTS_TO_ACCUMULATE;
+                                //     // DEBUG_PRINT("Z Final Measurement: %f\n", (double)z_final_measurement);
+                                // }
                             }
 
                             if (!(euclidean_distance_xy >= 0.20f))
                             {
+
+                                // z_final_measurement = z_final_measurement - 0.1f; // maunual calibration z-azis
+
                                 euclidean_distance_xy = 0.0f;
 
                                 ext_pos.x = solution[0];
                                 ext_pos.y = solution[1];
-                                ext_pos.z = z_final_measurement;
-                                // ext_pos.z = solution[2] - offsetCoil; // NOTA: è COMPENSATO PRIMA ORA
+                                // ext_pos.z = z_final_measurement;
+                                ext_pos.z = solution[2] - offsetCoil; // NOTA: è COMPENSATO PRIMA ORA
                                 ext_pos.stdDev = Optimization_Model_STD;
                                 estimatorEnqueuePosition(&ext_pos);
                             }

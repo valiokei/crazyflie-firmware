@@ -43,6 +43,7 @@
 #include "vl53l1x.h"
 
 #include "cf_math.h"
+#include "MagneticDeck.h"
 
 // Measurement noise model
 static const float expPointA = 2.5f;
@@ -56,6 +57,9 @@ static float expCoeff;
 static uint16_t range_last = 0;
 
 static bool isInit;
+
+static float distanceAfterDetection = 0.0f;
+static bool DroneIsOneTheFloor = false;
 
 NO_DMA_CCM_SAFE_ZERO_INIT static VL53L1_Dev_t dev;
 
@@ -129,7 +133,6 @@ void zRanger2Task(void *arg)
   lastWakeTime = xTaskGetTickCount();
 
   int measurmentCounter = 0;
-  bool lastMeasurementWasFromFloor = false;
 
   while (1)
   {
@@ -148,31 +151,35 @@ void zRanger2Task(void *arg)
       // rangeEnqueueDownRangeInEstimator(distance, stdDev, xTaskGetTickCount());
 
       // detection of the zone of the drone
-      if (range_last < 150)
+      if (distance < 0.15)
       {
+        distanceAfterDetection = distance;
         // the drone is landed or over the robodog
-        rangeEnqueueDownRangeInEstimator(distance, stdDev, xTaskGetTickCount());
+        rangeEnqueueDownRangeInEstimator(distanceAfterDetection, stdDev, xTaskGetTickCount());
         measurmentCounter = 0;
+
+        DroneIsOneTheFloor = false;
       }
 
-      if (range_last > 250)
+      if (distance > 0.25)
       {
 
         // count this measurement as a measurement from the floor
-        lastMeasurementWasFromFloor = true;
-        measurmentCounter++;
 
-        // prossima prova fai match con posizione ekf drone sapendo dove si trova
+        // measurmentCounter++;
+        // distanceAfterDetection = distance;
+        // rangeEnqueueDownRangeInEstimator(distanceAfterDetection, stdDev, xTaskGetTickCount());
 
-        // if we have 4 measurements from the floor, we can assume that the drone is on the floor
-        if (measurmentCounter == 10)
-        {
-          //  the drone is out of the convex hull of the robodog, the measurement has to be compensated
-          float robodogOffset = 0.11f;
-          rangeEnqueueDownRangeInEstimator(distance - robodogOffset, stdDev, xTaskGetTickCount());
-          measurmentCounter = 0;
-          DEBUG_PRINT("Drone is on the floor!!\n");
-        }
+        // // if we have 4 measurements from the floor, we can assume that the drone is on the floor
+        // if (measurmentCounter > 5)
+        // {
+        DroneIsOneTheFloor = true;
+
+        //  the drone is out of the convex hull of the robodog, the measurement has to be compensated
+        distanceAfterDetection = distance - robodogOffset;
+        rangeEnqueueDownRangeInEstimator(distanceAfterDetection, stdDev, xTaskGetTickCount());
+        // DEBUG_PRINT("Drone is on the floor!!\n");
+        // }
       }
     }
   }
@@ -190,6 +197,13 @@ static const DeckDriver zranger2_deck = {
 };
 
 DECK_DRIVER(zranger2_deck);
+
+LOG_GROUP_START(MyZRang)
+
+LOG_ADD(LOG_FLOAT, MyZRang, &distanceAfterDetection)
+LOG_ADD(LOG_UINT8, Cf21OnF, &DroneIsOneTheFloor)
+
+LOG_GROUP_STOP(MyZRang)
 
 PARAM_GROUP_START(deck)
 

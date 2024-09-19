@@ -9,7 +9,8 @@
 #include "stm32f4xx_gpio.h"
 
 #define MODEL_TO_USE 0 // 0 for Nelder-Mead strictly, 1 for Nelder-Mead with Kalman Filter
-#define Z_MEASUREMENTS_TO_ACCUMULATE 5
+#define Z_MEASUREMENTS_TO_ACCUMULATE 3
+#define TARGET_FLYING_HEIGHT 0.15f
 
 // -------------------------- ADC -------------------------------------------
 // ADC DMA configuration
@@ -39,10 +40,12 @@
 
 // ------------------------ Measurement Model Params -------------------------------------------
 #define Default_MagneticStandardDeviation 0.0001f
-#define G_INA 1000.0f
+#define G_INA 30.0f
 #define Optimization_Model_STD 0.08f
+static float Optimization_Model_STD_Z = 0.15f;
 
-#define offsetCoil 0.025f // 3 cm
+#define offsetCoil 0.025f // 3 cmf
+#define robodogOffset 0.10f
 
 // ------------------------ Linear Kalman Filter Params -------------------------------------------
 #define STATE_DIM 3   // Stato: [x, y, z]
@@ -87,9 +90,9 @@ typedef struct
 #define NeroIdx (int)(NeroResFreq / BIN_SIZE)
 #define Nero_M -2.804
 #define Nero_Q -2.635
-#define Nero_Position_x 0.48f
-#define Nero_Position_y 0.48f
-#define Nero_Position_z +0.30f - 0.11f
+#define Nero_Position_x 0.25f
+#define Nero_Position_y 0.25f
+#define Nero_Position_z +0.33f - 0.15f
 #define Nero_Id 0
 
 // #define GialloResFreq 203e3
@@ -97,9 +100,9 @@ typedef struct
 #define GialloIdx (int)(GialloResFreq / BIN_SIZE)
 #define Giallo_M -2.887
 #define Giallo_Q -2.629
-#define Giallo_Position_x +0.48f
-#define Giallo_Position_y -0.48f
-#define Giallo_Position_z +0.30f - 0.11f
+#define Giallo_Position_x +0.25f
+#define Giallo_Position_y -0.25f
+#define Giallo_Position_z +0.33f - 0.15f
 #define Giallo_Id 1
 
 // #define GrigioResFreq 193e3
@@ -107,9 +110,9 @@ typedef struct
 #define GrigioIdx (int)(GrigioResFreq / BIN_SIZE)
 #define Grigio_M -2.902
 #define Grigio_Q -2.647
-#define Grigio_Position_x -0.48f
-#define Grigio_Position_y -0.48f
-#define Grigio_Position_z +0.30f - 0.11f
+#define Grigio_Position_x -0.25f
+#define Grigio_Position_y -0.25f
+#define Grigio_Position_z +0.33f - 0.15f
 #define Grigio_Id 2
 
 // #define RossoResFreq 183e3
@@ -117,9 +120,9 @@ typedef struct
 #define RossoIdx (int)(RossoResFreq / BIN_SIZE)
 #define Rosso_M -2.950
 #define Rosso_Q -2.640
-#define Rosso_Position_x -0.48f
-#define Rosso_Position_y +0.48f
-#define Rosso_Position_z +0.30f - 0.11f
+#define Rosso_Position_x -0.25f
+#define Rosso_Position_y +0.25f
+#define Rosso_Position_z +0.33f - 0.15f
 #define Rosso_Id 3
 
 // ------------------------ PHYSICAL COIL -------------------------------------------
