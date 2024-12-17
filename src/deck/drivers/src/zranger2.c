@@ -151,7 +151,7 @@ void zRanger2Task(void *arg)
       // rangeEnqueueDownRangeInEstimator(distance, stdDev, xTaskGetTickCount());
 
       // detection of the zone of the drone
-      if (distance < 0.15)
+      if (distance <= 0.25f)
       {
         distanceAfterDetection = distance;
         // the drone is landed or over the robodog
@@ -161,7 +161,8 @@ void zRanger2Task(void *arg)
         DroneIsOneTheFloor = false;
       }
 
-      if (distance > 0.25)
+      if (distance > TARGET_FLYING_HEIGHT+robodogOffset -0.05f)
+      
       {
 
         // count this measurement as a measurement from the floor
@@ -177,8 +178,16 @@ void zRanger2Task(void *arg)
 
         //  the drone is out of the convex hull of the robodog, the measurement has to be compensated
         distanceAfterDetection = distance - robodogOffset;
+
+        
         rangeEnqueueDownRangeInEstimator(distanceAfterDetection, stdDev, xTaskGetTickCount());
-        // DEBUG_PRINT("Drone is on the floor!!\n");
+        
+        // print distance after the detection
+        // DEBUG_PRINT("distance: %f\n", distance);
+        
+        // // print the distance after the detection
+        // DEBUG_PRINT("distanceafterdetection: %f\n", distanceAfterDetection);
+        
         // }
       }
     }
